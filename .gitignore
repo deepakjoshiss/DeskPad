@@ -1,3 +1,9 @@
 BuildTools/.build
 BuildTools/.swiftpm
 xcuserdata/
+.DS_Store
+
+# Built product, deployed to the repo root (see CLAUDE.md).
+# "Kodi on DeskPad.app" is deliberately NOT ignored - it is hand-written source
+# (an Info.plist and a shell script), not a build artifact.
+DeskPad Dev.app/
