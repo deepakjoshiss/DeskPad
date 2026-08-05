@@ -66,4 +66,74 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
         return true
     }
+
+    /// Takes Kodi down with us, and - the whole point - does it *before* the
+    /// virtual display goes away.
+    ///
+    /// Order is everything here. The virtual display exists only as long as this
+    /// process does, so a Kodi still running when DeskPad exits is instantly
+    /// homeless: macOS moves it to the built-in display, where it reappears
+    /// fullscreen across the user's actual screen until it finally quits. Quitting
+    /// Kodi first and holding termination open until it is gone means it never has
+    /// a chance to migrate.
+    ///
+    /// `.terminateLater` rather than blocking in `applicationWillTerminate`: the
+    /// run loop keeps turning, so the mirror carries on rendering and the window
+    /// does not beachball while Kodi shuts down.
+    func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
+        guard
+            let displayID = store.state.screenConfigurationState.displayID,
+            let kodi = kodi(on: displayID)
+        else {
+            return .terminateNow
+        }
+
+        // Whatever happens below, terminating must not be able to hang. Every
+        // path ends at replyToTerminate(), which only ever fires once, and this
+        // backstop covers the ones that never report back at all - a connection
+        // that stays stuck in setup has no completion and no exit to observe.
+        DispatchQueue.main.asyncAfter(deadline: .now() + kodiQuitTimeout) { [weak self] in
+            self?.replyToTerminate()
+        }
+
+        KodiRemote.shared.requestQuit { [weak self] delivered in
+            guard delivered else {
+                // Kodi was not listening, so there is nothing to wait for. The
+                // launcher's watcher still cleans up after the display goes.
+                self?.replyToTerminate()
+                return
+            }
+            self?.waitForExit(of: kodi)
+        }
+        return .terminateLater
+    }
+
+    private let kodiQuitTimeout: TimeInterval = 8
+
+    private func waitForExit(of kodi: NSRunningApplication) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let deadline = Date().addingTimeInterval(self?.kodiQuitTimeout ?? 8)
+            while !kodi.isTerminated, Date() < deadline {
+                usleep(100_000)
+            }
+            if !kodi.isTerminated {
+                logDiagnostic("Kodi was asked to quit but had not exited after "
+                    + "\(Int(self?.kodiQuitTimeout ?? 8))s; quitting anyway. It may reappear on the "
+                    + "built-in display until it finishes shutting down.")
+            }
+            self?.replyToTerminate()
+        }
+    }
+
+    private var hasRepliedToTerminate = false
+
+    private func replyToTerminate() {
+        DispatchQueue.main.async { [self] in
+            guard !hasRepliedToTerminate else {
+                return
+            }
+            hasRepliedToTerminate = true
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+    }
 }

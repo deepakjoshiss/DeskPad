@@ -4,7 +4,9 @@ One click brings up the DeskPad virtual display and starts Kodi on it.
 
     open "Kodi on DeskPad.app"      # or double-click it in Finder
 
-DeskPad is deliberately **left running when Kodi quits**.
+DeskPad is deliberately **left running when Kodi quits**. The reverse is linked:
+**quitting DeskPad quits Kodi first**, then puts Kodi's display settings back —
+see "Teardown" below.
 
 ## Files
 
@@ -15,7 +17,8 @@ DeskPad is deliberately **left running when Kodi quits**.
 | `tools/kodi_rpc.py` | Kodi JSON-RPC client over its raw TCP socket (port 9090) |
 | `tools/patch_guisettings.py` | Surgical editor for Kodi's `guisettings.xml` |
 | `tools/display_id.py` | Looks up the virtual display's current `CGDirectDisplayID` (ctypes, no compiled helper) |
-| `~/Library/Logs/kodi-on-deskpad.log` | Per-run log (the wrapper's stdout) |
+| `~/Library/Logs/kodi-on-deskpad.log` | Per-run log (the wrapper's stdout, and the teardown watcher's) |
+| `~/Library/Application Support/kodi-on-deskpad/pre-session-settings` | Kodi's display settings as they were before this session, awaiting restore |
 
 Run the script directly to see what it's doing; the `.app` only exists to make
 it clickable and logs to the file above.
@@ -54,6 +57,57 @@ stored value is stale, so reading `guisettings.xml` cannot avoid it — the file
 holds a value but says nothing about whether it is still valid. Only a
 prediction lets us patch *before* Kodi's first launch.
 
+## Teardown
+
+Quitting DeskPad ends the whole session: Kodi is quit and its display settings
+are put back the way they were. It is split across the two halves, and the split
+is not arbitrary — each step has to happen at a moment only one of them can see.
+
+    Cmd-Q DeskPad
+      → DeskPad asks Kodi to quit and holds its own termination open
+      → Kodi exits (~2s) while the virtual display is still there
+      → DeskPad finishes quitting; the display goes
+      → the watcher sees the display go and restores guisettings.xml, then exits
+
+**Kodi must be gone before the display is.** The virtual display exists only as
+long as DeskPad's process does, so a Kodi still running when DeskPad exits is
+instantly homeless: macOS moves it to the built-in display, where it reappears
+*fullscreen across the user's actual screen* until it finishes quitting. Only
+DeskPad can prevent that, because only DeskPad knows it is about to quit. It uses
+`.terminateLater` rather than blocking in `applicationWillTerminate`, so the run
+loop keeps turning and the mirror carries on rendering while Kodi shuts down.
+Measured: Kodi exits 1.9s after Cmd-Q and 0.4s before the display, and never
+appears on the built-in display at all (0 of ~300 samples at 100ms).
+
+**The settings restore must happen after Kodi is gone**, because Kodi writes its
+settings out on the way down and would clobber an earlier one. That is the
+watcher's job, and it stays in the launcher: DeskPad has no business knowing
+about `guisettings.xml`, and the restore has to outlive DeskPad anyway.
+
+The watcher is also the fallback for everything DeskPad cannot cover — being
+killed rather than quit, or Kodi ignoring the request — since it keys on the
+display disappearing rather than on a clean quit. In the normal case it finds
+Kodi already gone and only restores the settings.
+
+Termination can never hang on this. Every path ends at a single reply, including
+a backstop timer for the case where the connection is stuck in setup, so there is
+neither a completion to wait for nor a process exit to observe.
+
+Only `videoscreen.monitor` and `videoscreen.screenmode` are restored — the two
+the launcher changes. Restoring a whole backup of `guisettings.xml` would throw
+away every other setting touched during the session.
+
+**Never capture the pre-session values while a session is live.** They are read
+once, before anything is patched, and kept in a file so a watcher that dies
+without restoring does not cost the real values. If the record is absent *and*
+the file already names our own display, the capture falls back to `Default`:
+restoring the DeskPad display would strand Kodi on a display that no longer
+exists.
+
+**A missed restore is not fatal.** Log out with a session live and the settings
+stay patched; Kodi then finds a display that isn't there and falls back to
+`Default` on its own, and the next launcher run re-converges.
+
 ## Hard-won details
 
 These are all things that silently broke a working-looking setup. Change them at
@@ -81,6 +135,16 @@ single detail is the difference between working and silently doing nothing.
 **Kodi persists settings on change, not just on clean exit.** So a `kill -9`
 doesn't necessarily discard a settings change — but Kodi *will* overwrite edits
 made underneath a running instance. Hence: stop, patch, start.
+
+**`pgrep -f` matches command lines that merely mention what you searched for.**
+The teardown watcher originally polled for DeskPad's process this way, and any
+other process whose arguments contained the app's path — a `grep`, an editor, a
+script polling for the same thing — read as "DeskPad is still running", so the
+teardown silently never fired. Measured: a test loop running `pgrep -f "DeskPad
+Dev.app/Contents/MacOS/"` held the watcher off for a full 40s, and it fired the
+instant that loop exited. Process checks here are anchored with `^` so they match
+a real command line rather than a mention of one; the watcher avoids the question
+altogether by asking CoreGraphics whether the display is attached.
 
 **The virtual display needs a moment, and Kodi enumerates displays only at
 startup.** Launch Kodi too early and it lands on the built-in screen with no

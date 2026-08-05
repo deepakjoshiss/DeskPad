@@ -17,24 +17,42 @@ avoid reformatting a file Kodi owns.
 
 Usage:
     patch_guisettings.py <path> <setting-id>=<value> [<setting-id>=<value> ...]
+    patch_guisettings.py --get <path> <setting-id> [<setting-id> ...]
 
 Prints one line per setting describing what happened; exits non-zero if any
 requested setting could not be found.
+
+`--get` instead prints `<setting-id>=<value>` per setting, in exactly the form
+the setting form of this command takes back - so a value can be read before a
+session and replayed after it.
 """
 
 import re
 import sys
-from xml.sax.saxutils import escape
+from xml.sax.saxutils import escape, unescape
 
 
-def patch(text, setting_id, value):
-    """Return (new_text, changed, found) for a single setting."""
-    pattern = re.compile(
+def setting_pattern(setting_id):
+    return re.compile(
         r'(?P<indent>[ \t]*)<setting\s+id="%s"(?P<attrs>[^>]*?)'
         r'(?:/>|>(?P<value>.*?)</setting>)' % re.escape(setting_id),
         re.DOTALL,
     )
-    match = pattern.search(text)
+
+
+def read(text, setting_id):
+    """Return the setting's current value, or None if it is not in the file."""
+    match = setting_pattern(setting_id).search(text)
+    if not match:
+        return None
+    # Unescaped, because the setting form of this command escapes on the way in;
+    # returning the raw text would double-escape a value that round-trips.
+    return unescape(match.group("value") or "")
+
+
+def patch(text, setting_id, value):
+    """Return (new_text, changed, found) for a single setting."""
+    match = setting_pattern(setting_id).search(text)
     if not match:
         return text, False, False
 
@@ -56,9 +74,20 @@ def main():
         print(__doc__.strip(), file=sys.stderr)
         return 2
 
-    path = sys.argv[1]
+    getting = sys.argv[1] == "--get"
+    path = sys.argv[2] if getting else sys.argv[1]
     with open(path, "r", encoding="utf-8") as handle:
         text = handle.read()
+
+    if getting:
+        missing = []
+        for setting_id in sys.argv[3:]:
+            value = read(text, setting_id)
+            if value is None:
+                missing.append(setting_id)
+            else:
+                print("%s=%s" % (setting_id, value))
+        return 1 if missing else 0
 
     original = text
     missing = []

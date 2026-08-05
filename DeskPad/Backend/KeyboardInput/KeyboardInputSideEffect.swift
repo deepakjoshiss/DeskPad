@@ -17,7 +17,7 @@ func keyboardInputSideEffect() -> SideEffect {
             return
         }
 
-        if NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == kodiBundleIdentifier {
+        if isKodi(pid) {
             if let button = kodiButtonName(forKeyCode: keyCode, characters: characters) {
                 KodiRemote.shared.pressKey(named: button)
             }

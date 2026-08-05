@@ -1,7 +1,22 @@
-import Foundation
+import Cocoa
 import Network
 
 let kodiBundleIdentifier = "org.xbmc.kodi"
+
+func isKodi(_ pid: pid_t) -> Bool {
+    return NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == kodiBundleIdentifier
+}
+
+/// Kodi, if it is the app showing on the given display.
+func kodi(on displayID: CGDirectDisplayID) -> NSRunningApplication? {
+    guard
+        let pid = topmostWindowOwner(where: { $0.intersects(CGDisplayBounds(displayID)) }),
+        isKodi(pid)
+    else {
+        return nil
+    }
+    return NSRunningApplication(processIdentifier: pid)
+}
 
 /// Fire-and-forget JSON-RPC client for Kodi's raw TCP transport.
 ///
@@ -31,19 +46,29 @@ final class KodiRemote {
         send(method: "Input.ButtonEvent", params: ["button": button, "keymap": "KB"])
     }
 
+    /// Asks Kodi to quit. `delivered` reports whether the request reached the
+    /// socket, so a caller waiting on Kodi to exit can give up immediately rather
+    /// than sitting out a timeout when Kodi was never listening.
+    func requestQuit(delivered: @escaping (Bool) -> Void) {
+        send(method: "Application.Quit", params: [:], delivered: delivered)
+    }
+
     /// Sent as a JSON-RPC *notification* - no `id`, so Kodi sends no reply and we
     /// never read. At key-repeat rates, waiting for a response per keystroke would
     /// serialise typing behind Kodi's answer.
-    private func send(method: String, params: [String: Any]) {
+    private func send(method: String, params: [String: Any], delivered: ((Bool) -> Void)? = nil) {
         let payload: [String: Any] = ["jsonrpc": "2.0", "method": method, "params": params]
         guard let data = try? JSONSerialization.data(withJSONObject: payload) else {
+            delivered?(false)
             return
         }
         queue.async {
             self.activeConnection().send(content: data, completion: .contentProcessed { error in
                 guard let error else {
+                    delivered?(true)
                     return
                 }
+                delivered?(false)
                 self.queue.async {
                     self.report("send failed: \(error)")
                     self.reset()
