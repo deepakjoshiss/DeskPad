@@ -13,7 +13,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window = NSWindow(contentViewController: viewController)
         window.delegate = viewController
         window.title = "DeskPad"
-        window.makeKeyAndOrderFront(nil)
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
         window.titleVisibility = .hidden
@@ -22,6 +21,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentMaxSize = CGSize(width: 5120, height: 2160)
         window.styleMask.insert(.resizable)
         window.collectionBehavior.insert(.fullScreenNone)
+
+        window.setContentSize(CGSize(width: 960, height: 540))
+        window.center()
+        // setFrameAutosaveName only registers the name; setFrameUsingName reports
+        // whether a previously saved frame actually existed to restore.
+        window.setFrameAutosaveName("MainWindow")
+        window.setFrameUsingName("MainWindow")
+        window.makeKeyAndOrderFront(nil)
 
         let mainMenu = NSMenu()
         let mainMenuItem = NSMenuItem()
