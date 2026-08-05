@@ -23,13 +23,16 @@ class ScreenViewController: SubscriberViewController<ScreenViewData>, NSWindowDe
 
         let descriptor = CGVirtualDisplayDescriptor()
         descriptor.setDispatchQueue(DispatchQueue.main)
-        descriptor.name = "DeskPad Display"
+        descriptor.name = "DeskPad Dev Display"
         descriptor.maxPixelsWide = 5120
         descriptor.maxPixelsHigh = 2160
         descriptor.sizeInMillimeters = CGSize(width: 1600, height: 1000)
         descriptor.productID = 0x1234
         descriptor.vendorID = 0x3456
-        descriptor.serialNum = 0x0001
+        // Distinct serial from the release build (0x0001): macOS refuses to create
+        // two virtual displays sharing a vendor/product/serial identity, and this
+        // triple is what the display's stable UUID is derived from.
+        descriptor.serialNum = 0x0002
 
         let display = CGVirtualDisplay(descriptor: descriptor)
         store.dispatch(ScreenViewAction.setDisplayID(display.displayID))
@@ -38,6 +41,8 @@ class ScreenViewController: SubscriberViewController<ScreenViewData>, NSWindowDe
         let settings = CGVirtualDisplaySettings()
         settings.hiDPI = 1
         settings.modes = [
+            // 16:9 (default)
+            CGVirtualDisplayMode(width: 1920, height: 1080, refreshRate: 60),
             // 32:9
             CGVirtualDisplayMode(width: 5120, height: 1440, refreshRate: 60),
             // 21:9 (239:100, 12:5)
@@ -47,7 +52,6 @@ class ScreenViewController: SubscriberViewController<ScreenViewData>, NSWindowDe
             // 16:9
             CGVirtualDisplayMode(width: 3840, height: 2160, refreshRate: 60),
             CGVirtualDisplayMode(width: 2560, height: 1440, refreshRate: 60),
-            CGVirtualDisplayMode(width: 1920, height: 1080, refreshRate: 60),
             CGVirtualDisplayMode(width: 1600, height: 900, refreshRate: 60),
             CGVirtualDisplayMode(width: 1366, height: 768, refreshRate: 60),
             CGVirtualDisplayMode(width: 1280, height: 720, refreshRate: 60),
@@ -59,6 +63,45 @@ class ScreenViewController: SubscriberViewController<ScreenViewData>, NSWindowDe
             CGVirtualDisplayMode(width: 1280, height: 800, refreshRate: 60),
         ]
         display.apply(settings)
+
+        // Reordering settings.modes does not control which mode macOS picks on
+        // attach - it chooses one itself (and may restore a stored preference).
+        // Force the launch resolution explicitly once the display registers.
+        applyPreferredMode(to: display.displayID, width: 1920, height: 1080, attemptsRemaining: 20)
+    }
+
+    /// Switches `displayID` to the given 1x mode, retrying until the virtual
+    /// display has published its mode list.
+    private func applyPreferredMode(
+        to displayID: CGDirectDisplayID,
+        width: Int,
+        height: Int,
+        attemptsRemaining: Int
+    ) {
+        let mode = (CGDisplayCopyAllDisplayModes(displayID, nil) as? [CGDisplayMode])?
+            .first { $0.width == width && $0.height == height && $0.pixelWidth == width }
+
+        guard let mode else {
+            guard attemptsRemaining > 0 else {
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                self?.applyPreferredMode(
+                    to: displayID,
+                    width: width,
+                    height: height,
+                    attemptsRemaining: attemptsRemaining - 1
+                )
+            }
+            return
+        }
+
+        var configuration: CGDisplayConfigRef?
+        guard CGBeginDisplayConfiguration(&configuration) == .success else {
+            return
+        }
+        CGConfigureDisplayWithDisplayMode(configuration, displayID, mode, nil)
+        CGCompleteDisplayConfiguration(configuration, .forSession)
     }
 
     override func update(with viewData: ScreenViewData) {
@@ -80,9 +123,7 @@ class ScreenViewController: SubscriberViewController<ScreenViewData>, NSWindowDe
             previousResolution = viewData.resolution
             previousScaleFactor = viewData.scaleFactor
             stream = nil
-            view.window?.setContentSize(viewData.resolution)
             view.window?.contentAspectRatio = viewData.resolution
-            view.window?.center()
             let stream = CGDisplayStream(
                 dispatchQueueDisplay: display.displayID,
                 outputWidth: Int(viewData.resolution.width * viewData.scaleFactor),
