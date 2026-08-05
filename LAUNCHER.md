@@ -14,6 +14,7 @@ DeskPad is deliberately **left running when Kodi quits**.
 | `launch-kodi-on-deskpad.sh` | All the logic; safe to run directly in a terminal |
 | `tools/kodi_rpc.py` | Kodi JSON-RPC client over its raw TCP socket (port 9090) |
 | `tools/patch_guisettings.py` | Surgical editor for Kodi's `guisettings.xml` |
+| `tools/display_id.py` | Looks up the virtual display's current `CGDirectDisplayID` (ctypes, no compiled helper) |
 | `~/Library/Logs/kodi-on-deskpad.log` | Per-run log (the wrapper's stdout) |
 
 Run the script directly to see what it's doing; the `.app` only exists to make
@@ -23,13 +24,35 @@ it clickable and logs to the file above.
 
 1. Starts `DeskPad Dev.app` if the virtual display isn't already present, and
    **waits for the display to register**.
-2. Starts Kodi if it isn't running, waiting until JSON-RPC answers.
-3. Asks Kodi which monitor option corresponds to our display.
-4. If Kodi isn't already on it: stops Kodi, patches `guisettings.xml`, restarts Kodi.
-5. Verifies Kodi ended up on the right display.
+2. If Kodi isn't running, *predicts* the monitor string and writes it to
+   `guisettings.xml` before launching, so Kodi initialises on the right display
+   in one go (see "The prediction" below).
+3. Starts Kodi if it isn't running, waiting until JSON-RPC answers.
+4. Asks Kodi which monitor option corresponds to our display — the
+   **authoritative** answer.
+5. If Kodi isn't already on it: stops Kodi, patches `guisettings.xml`, restarts Kodi.
+6. Verifies Kodi ended up on the right display.
 
-In the steady state (nothing changed) it's a single Kodi launch with no restart.
-It's idempotent — clicking twice is harmless.
+A cold start is a single Kodi launch (~4s) when the prediction holds; if it
+doesn't, step 5 corrects it at the cost of one extra Kodi launch (~20s). It's
+idempotent — clicking twice is harmless.
+
+### The prediction
+
+Kodi's session number is empirically `CGDirectDisplayID - 1`, consistent across
+five measured sessions (`47/48/49/50/51` → `46/47/48/49/50`).
+
+**This is a heuristic, not a contract.** The mechanism is undocumented, and it
+may well not hold with a third display attached or on a different Kodi build.
+It is therefore only ever used to *guess* — step 4 still asks Kodi for the real
+value and step 5 corrects a wrong guess. Never make this offset load-bearing;
+if you remove the authoritative check, a bad guess silently strands Kodi on the
+built-in display.
+
+Why the guess is needed at all: the double launch happens exactly when the
+stored value is stale, so reading `guisettings.xml` cannot avoid it — the file
+holds a value but says nothing about whether it is still valid. Only a
+prediction lets us patch *before* Kodi's first launch.
 
 ## Hard-won details
 

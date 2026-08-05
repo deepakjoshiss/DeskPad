@@ -174,7 +174,28 @@ current_monitor() {
 
 ensure_deskpad
 
+# Fast path: patch the setting BEFORE Kodi's first launch so it initialises on
+# the right display in one go.
+#
+# The catch is that the target string embeds the volatile session number, which
+# is only authoritative from Kodi itself - and Kodi has to be running to ask.
+# Empirically that number is (CGDirectDisplayID - 1), consistent across four
+# measured sessions (47/48/49/50 -> 46/47/48/49). The mechanism is undocumented,
+# so this is treated strictly as a *guess*: it saves a Kodi restart when right,
+# and the authoritative check below still corrects it when wrong. Never rely on
+# this offset alone.
 if ! kodi_running; then
+    display_id="$("$TOOLS/display_id.py" 2>/dev/null)"
+    if [ -n "$display_id" ] && [ "$display_id" -gt 0 ] 2>/dev/null; then
+        predicted="$DISPLAY_NAME ($((display_id - 1)))"
+        log "pre-setting predicted monitor '$predicted' (displayID $display_id)"
+        "$PATCHER" "$GUISETTINGS" \
+            "videoscreen.monitor=$predicted" \
+            "videoscreen.screenmode=$SCREENMODE" >/dev/null ||
+            log "WARNING: could not pre-set settings; falling back to patch-and-restart"
+    else
+        log "could not read the display's id; falling back to patch-and-restart"
+    fi
     start_kodi
 fi
 
