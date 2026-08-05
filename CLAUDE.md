@@ -30,6 +30,19 @@ section of `LAUNCHER.md`.
 * `origin` points at the upstream project (`Stengo/DeskPad`), which we do not
   control. Nothing here should ever be pushed there.
 
+## The App Sandbox is off on purpose
+
+`DeskPad.entitlements` sets `com.apple.security.app-sandbox` to `false`. This is
+required, not accidental: forwarding clicks to the mirrored display posts
+synthetic events, and the sandbox blocks event injection outright even with
+Accessibility granted (verified — the cursor warped but no click was ever
+delivered). Do not re-enable it while mouse forwarding exists, and do not
+re-add the `mach-lookup` temporary exception; that only had meaning under the
+sandbox.
+
+The app consequently is not isolated: it captures the screen and can synthesise
+input. It is a local build and is not distributed.
+
 ## Build and deploy
 
     xcodebuild -project DeskPad.xcodeproj -scheme DeskPad -configuration Release build

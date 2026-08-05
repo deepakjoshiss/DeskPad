@@ -1,3 +1,4 @@
+import ApplicationServices
 import Cocoa
 import ReSwift
 
@@ -43,7 +44,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.items = [mainMenuItem]
         NSApplication.shared.mainMenu = mainMenu
 
+        requestEventPostingAccessIfNeeded()
+
         store.dispatch(AppDelegateAction.didFinishLaunching)
+    }
+
+    /// Clicking the mirrored screen forwards a synthetic mouse event, and macOS
+    /// gates event *injection* behind its own TCC service (`kTCCServicePostEvent`),
+    /// which is distinct from Accessibility - granting Accessibility alone leaves
+    /// `CGEvent.post` silently failing, so the cursor warps but no click ever
+    /// arrives. `CGRequestPostEventAccess` is the API that asks for the right one.
+    private func requestEventPostingAccessIfNeeded() {
+        guard !CGPreflightPostEventAccess() else {
+            return
+        }
+        let granted = CGRequestPostEventAccess()
+        logDiagnostic("no event-posting access; requested it -> granted=\(granted). "
+            + "Until granted, clicks on the mirror move the cursor but do not click.")
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {

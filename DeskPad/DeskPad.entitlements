@@ -2,13 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- The App Sandbox is deliberately disabled in this local build.
+	     Forwarding clicks to the mirrored display posts synthetic mouse events
+	     via CGEvent.post, and the sandbox blocks event injection outright even
+	     when Accessibility has been granted (verified: the cursor warped but no
+	     click was ever delivered). This is why input-forwarding tools generally
+	     ship unsandboxed. Upstream DeskPad sandboxes for App Store distribution;
+	     this build is not distributed.
+
+	     Consequence: the app is no longer isolated. It captures the screen and
+	     can synthesise input, so treat it accordingly. Re-enable the sandbox if
+	     mouse forwarding is ever removed. -->
 	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<false/>
 	<key>com.apple.security.files.user-selected.read-only</key>
 	<true/>
-	<key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
-	<array>
-		<string>com.apple.VirtualDisplay</string>
-	</array>
 </dict>
 </plist>
