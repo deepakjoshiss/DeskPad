@@ -1,16 +1,21 @@
 import ApplicationServices
 import Cocoa
-import ReSwift
 
-enum AppDelegateAction: Action {
-    case didFinishLaunching
-}
-
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
 
+    /// The single owner of the app's state. Handed to whoever needs it rather
+    /// than reached for globally.
+    private let model = AppModel()
+
     func applicationDidFinishLaunching(_: Notification) {
-        let viewController = ScreenViewController()
+        // Before the view controller, which creates the virtual display: the
+        // model has to be watching for screen parameter changes already, or the
+        // notification announcing the new display is missed.
+        model.start()
+
+        let viewController = ScreenViewController(model: model)
         window = NSWindow(contentViewController: viewController)
         window.delegate = viewController
         window.title = "DeskPad"
@@ -45,8 +50,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.mainMenu = mainMenu
 
         requestEventPostingAccessIfNeeded()
-
-        store.dispatch(AppDelegateAction.didFinishLaunching)
     }
 
     /// Clicking the mirrored screen forwards a synthetic mouse event, and macOS
@@ -82,7 +85,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// does not beachball while Kodi shuts down.
     func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
         guard
-            let displayID = store.state.screenConfigurationState.displayID,
+            let displayID = model.displayID,
             let kodi = kodi(on: displayID)
         else {
             return .terminateNow
@@ -121,7 +124,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     + "\(Int(self?.kodiQuitTimeout ?? 8))s; quitting anyway. It may reappear on the "
                     + "built-in display until it finishes shutting down.")
             }
-            self?.replyToTerminate()
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self?.replyToTerminate()
+                }
+            }
         }
     }
 

@@ -1,11 +1,7 @@
 import Cocoa
 import CoreVideo
-import ReSwift
+import Observation
 import ScreenCaptureKit
-
-enum ScreenViewAction: Action {
-    case setDisplayID(CGDirectDisplayID)
-}
 
 /// The mirrored virtual display. Reports pointer and keyboard input so the
 /// controller can forward it to whatever app is on the virtual display.
@@ -168,42 +164,45 @@ private final class DisplayCaptureOutput: NSObject, SCStreamOutput, SCStreamDele
     }
 }
 
-class ScreenViewController: SubscriberViewController<ScreenViewData>, NSWindowDelegate {
+class ScreenViewController: NSViewController, NSWindowDelegate {
+    private let model: AppModel
+
+    init(model: AppModel) {
+        self.model = model
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("ScreenViewController is built in code, never loaded from a nib.")
+    }
+
     override func loadView() {
         let screenView = ScreenView()
         screenView.wantsLayer = true
         screenView.onCaptureMouse = { [weak self] point in
-            guard let point = self?.displayPoint(from: point) else {
+            guard let self, let displayID = model.displayID, let point = displayPoint(from: point) else {
                 return
             }
-            store.dispatch(MouseLocationAction.requestCursorCapture(atPoint: point))
+            captureCursor(onDisplay: displayID, at: point)
         }
         screenView.onClick = { [weak self] point, button, clickCount in
-            guard let point = self?.displayPoint(from: point) else {
+            guard let self, let displayID = model.displayID, let point = displayPoint(from: point) else {
                 return
             }
-            store.dispatch(MouseLocationAction.requestClick(
-                atPoint: point,
-                button: button,
-                clickCount: clickCount
-            ))
+            forwardClick(onDisplay: displayID, at: point, button: button, clickCount: clickCount)
         }
         screenView.onScroll = { [weak self] point, deltaY, deltaX in
-            guard let point = self?.displayPoint(from: point) else {
+            guard let self, let displayID = model.displayID, let point = displayPoint(from: point) else {
                 return
             }
-            store.dispatch(MouseLocationAction.requestScroll(
-                atPoint: point,
-                deltaY: deltaY,
-                deltaX: deltaX
-            ))
+            forwardScroll(onDisplay: displayID, at: point, deltaY: deltaY, deltaX: deltaX)
         }
-        screenView.onKey = { keyCode, characters, modifiers in
-            store.dispatch(KeyboardInputAction.requestKey(
-                keyCode: keyCode,
-                characters: characters,
-                modifiers: modifiers
-            ))
+        screenView.onKey = { [weak self] keyCode, characters, modifiers in
+            guard let displayID = self?.model.displayID else {
+                return
+            }
+            forwardKey(onDisplay: displayID, keyCode: keyCode, characters: characters, modifiers: modifiers)
         }
         view = screenView
     }
@@ -214,6 +213,8 @@ class ScreenViewController: SubscriberViewController<ScreenViewData>, NSWindowDe
     override func viewDidAppear() {
         super.viewDidAppear()
         view.window?.makeFirstResponder(view)
+        // The window exists by now, which it may not have at viewDidLoad.
+        applyModel()
     }
 
     private var display: CGVirtualDisplay!
@@ -224,8 +225,10 @@ class ScreenViewController: SubscriberViewController<ScreenViewData>, NSWindowDe
     /// back onto it. CGDisplayStream ran its handler on the main queue outright.
     private let captureQueue = DispatchQueue(label: "com.jellyvin.deskpad.capture")
     private var isWindowHighlighted = false
-    private var previousResolution: CGSize?
-    private var previousScaleFactor: CGFloat?
+    /// What the live stream was built for, so a redundant geometry change does
+    /// not tear a perfectly good stream down and rebuild it.
+    private var capturedResolution: CGSize?
+    private var capturedScaleFactor: CGFloat?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -244,7 +247,7 @@ class ScreenViewController: SubscriberViewController<ScreenViewData>, NSWindowDe
         descriptor.serialNum = 0x0002
 
         let display = CGVirtualDisplay(descriptor: descriptor)
-        store.dispatch(ScreenViewAction.setDisplayID(display.displayID))
+        model.virtualDisplayDidAppear(display.displayID)
         self.display = display
 
         let settings = CGVirtualDisplaySettings()
@@ -277,6 +280,29 @@ class ScreenViewController: SubscriberViewController<ScreenViewData>, NSWindowDe
         // attach - it chooses one itself (and may restore a stored preference).
         // Force the launch resolution explicitly once the display registers.
         applyPreferredMode(to: display.displayID, width: 1920, height: 1080, attemptsRemaining: 20)
+
+        observeModel()
+        applyModel()
+    }
+
+    /// Re-arms after every change, because `withObservationTracking` reports one.
+    ///
+    /// The change handler runs *before* the new value is stored, so reading the
+    /// model has to wait for the next turn of the run loop; reading it inline
+    /// would see the old value every time.
+    private func observeModel() {
+        withObservationTracking {
+            _ = model.resolution
+            _ = model.scaleFactor
+            _ = model.isPointerWithinScreen
+        } onChange: { [weak self] in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self?.applyModel()
+                    self?.observeModel()
+                }
+            }
+        }
     }
 
     /// Switches `displayID` to the given 1x mode, retrying until the virtual
@@ -313,9 +339,9 @@ class ScreenViewController: SubscriberViewController<ScreenViewData>, NSWindowDe
         CGCompleteDisplayConfiguration(configuration, .forSession)
     }
 
-    override func update(with viewData: ScreenViewData) {
-        if viewData.isWindowHighlighted != isWindowHighlighted {
-            isWindowHighlighted = viewData.isWindowHighlighted
+    private func applyModel() {
+        if model.isPointerWithinScreen != isWindowHighlighted {
+            isWindowHighlighted = model.isPointerWithinScreen
             view.window?.backgroundColor = isWindowHighlighted
                 ? NSColor(named: "TitleBarActive")
                 : NSColor(named: "TitleBarInactive")
@@ -324,17 +350,22 @@ class ScreenViewController: SubscriberViewController<ScreenViewData>, NSWindowDe
             }
         }
 
-        if
-            viewData.resolution != .zero,
-            viewData.resolution != previousResolution
-            || viewData.scaleFactor != previousScaleFactor
-        {
-            previousResolution = viewData.resolution
-            previousScaleFactor = viewData.scaleFactor
-            view.window?.contentAspectRatio = viewData.resolution
+        guard model.resolution != .zero else {
+            return
+        }
+
+        // Outside the guard below, and repeated on every pass: the first pass
+        // runs from viewDidLoad, where there is not necessarily a window yet.
+        // Applying this only alongside a capture restart would let that first
+        // pass consume the change and leave the aspect ratio never set.
+        view.window?.contentAspectRatio = model.resolution
+
+        if model.resolution != capturedResolution || model.scaleFactor != capturedScaleFactor {
+            capturedResolution = model.resolution
+            capturedScaleFactor = model.scaleFactor
             startCapture(
-                pixelWidth: Int(viewData.resolution.width * viewData.scaleFactor),
-                pixelHeight: Int(viewData.resolution.height * viewData.scaleFactor)
+                pixelWidth: Int(model.resolution.width * model.scaleFactor),
+                pixelHeight: Int(model.resolution.height * model.scaleFactor)
             )
         }
     }
@@ -451,8 +482,9 @@ class ScreenViewController: SubscriberViewController<ScreenViewData>, NSWindowDe
     func windowWillResize(_ window: NSWindow, to frameSize: NSSize) -> NSSize {
         let snappingOffset: CGFloat = 30
         let contentSize = window.contentRect(forFrameRect: NSRect(origin: .zero, size: frameSize)).size
+        let screenResolution = model.resolution
         guard
-            let screenResolution = previousResolution,
+            screenResolution != .zero,
             abs(contentSize.width - screenResolution.width) < snappingOffset
         else {
             return frameSize
@@ -464,8 +496,9 @@ class ScreenViewController: SubscriberViewController<ScreenViewData>, NSWindowDe
     /// coordinate space (top-left origin, in points), or nil if the display
     /// resolution isn't known yet.
     private func displayPoint(from viewPoint: NSPoint) -> NSPoint? {
+        let screenResolution = model.resolution
         guard
-            let screenResolution = previousResolution,
+            screenResolution != .zero,
             view.frame.width > 0,
             view.frame.height > 0
         else {

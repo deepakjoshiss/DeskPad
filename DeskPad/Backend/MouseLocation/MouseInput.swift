@@ -1,57 +1,37 @@
-import Foundation
-import ReSwift
+import Cocoa
 
-private var timer: Timer?
-
-enum MouseLocationAction: Action {
-    case located(isWithinScreen: Bool)
-    case requestCursorCapture(atPoint: NSPoint)
-    case requestClick(atPoint: NSPoint, button: CGMouseButton, clickCount: Int)
-    case requestScroll(atPoint: NSPoint, deltaY: CGFloat, deltaX: CGFloat)
+/// Hands the pointer over to the virtual display without clicking anything.
+///
+/// `displayPoint` is in the display's own coordinate space; the translation to
+/// the global space CGEvent uses happens here.
+func captureCursor(onDisplay displayID: CGDirectDisplayID, at displayPoint: NSPoint) {
+    captureCursor(at: globalPoint(on: displayID, displayPoint: displayPoint))
 }
 
-func mouseLocationSideEffect() -> SideEffect {
-    return { action, dispatch, getState in
-        if timer == nil {
-            timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
-                let mouseLocation = NSEvent.mouseLocation
-                let screens = NSScreen.screens
-                let screenContainingMouse = (screens.first { NSMouseInRect(mouseLocation, $0.frame, false) })
-                let isWithinScreen = screenContainingMouse?.displayID == getState()?.screenConfigurationState.displayID
-                dispatch(MouseLocationAction.located(isWithinScreen: isWithinScreen))
-            }
-        }
-        switch action {
-        case let MouseLocationAction.requestCursorCapture(point):
-            guard let displayID = getState()?.screenConfigurationState.displayID else {
-                return
-            }
-            captureCursor(at: globalPoint(on: displayID, displayPoint: point))
+func forwardClick(
+    onDisplay displayID: CGDirectDisplayID,
+    at displayPoint: NSPoint,
+    button: CGMouseButton,
+    clickCount: Int
+) {
+    postClick(
+        at: globalPoint(on: displayID, displayPoint: displayPoint),
+        button: button,
+        clickCount: clickCount
+    )
+}
 
-        case let MouseLocationAction.requestClick(point, button, clickCount):
-            guard let displayID = getState()?.screenConfigurationState.displayID else {
-                return
-            }
-            postClick(
-                at: globalPoint(on: displayID, displayPoint: point),
-                button: button,
-                clickCount: clickCount
-            )
-
-        case let MouseLocationAction.requestScroll(point, deltaY, deltaX):
-            guard let displayID = getState()?.screenConfigurationState.displayID else {
-                return
-            }
-            postScroll(
-                at: globalPoint(on: displayID, displayPoint: point),
-                deltaY: deltaY,
-                deltaX: deltaX
-            )
-
-        default:
-            return
-        }
-    }
+func forwardScroll(
+    onDisplay displayID: CGDirectDisplayID,
+    at displayPoint: NSPoint,
+    deltaY: CGFloat,
+    deltaX: CGFloat
+) {
+    postScroll(
+        at: globalPoint(on: displayID, displayPoint: displayPoint),
+        deltaY: deltaY,
+        deltaX: deltaX
+    )
 }
 
 /// Converts a point in a display's own coordinate space to the global space that

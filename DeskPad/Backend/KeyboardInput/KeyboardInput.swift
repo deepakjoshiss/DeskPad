@@ -1,31 +1,27 @@
 import Cocoa
-import ReSwift
 
-enum KeyboardInputAction: Action {
-    case requestKey(keyCode: UInt16, characters: String?, modifiers: NSEvent.ModifierFlags)
-}
-
-func keyboardInputSideEffect() -> SideEffect {
-    return { action, _, getState in
-        guard
-            case let KeyboardInputAction.requestKey(keyCode, characters, modifiers) = action,
-            let displayID = getState()?.screenConfigurationState.displayID,
-            // A keystroke has no coordinates, so the target is whoever owns the
-            // display being mirrored.
-            let pid = topmostWindowOwner(where: { $0.intersects(CGDisplayBounds(displayID)) })
-        else {
-            return
-        }
-
-        if isKodi(pid) {
-            if let button = kodiButtonName(forKeyCode: keyCode, characters: characters) {
-                KodiRemote.shared.pressKey(named: button)
-            }
-            return
-        }
-
-        postKey(keyCode: keyCode, characters: characters, modifiers: modifiers, to: pid)
+/// Forwards a keystroke to whatever app is showing on the mirrored display.
+///
+/// A keystroke carries no coordinates, so the target is whoever owns the display
+/// being mirrored rather than whoever is under the pointer.
+func forwardKey(
+    onDisplay displayID: CGDirectDisplayID,
+    keyCode: UInt16,
+    characters: String?,
+    modifiers: NSEvent.ModifierFlags
+) {
+    guard let pid = topmostWindowOwner(where: { $0.intersects(CGDisplayBounds(displayID)) }) else {
+        return
     }
+
+    if isKodi(pid) {
+        if let button = kodiButtonName(forKeyCode: keyCode, characters: characters) {
+            KodiRemote.shared.pressKey(named: button)
+        }
+        return
+    }
+
+    postKey(keyCode: keyCode, characters: characters, modifiers: modifiers, to: pid)
 }
 
 /// Kodi's own name for a keyboard button, as its keymap spells it.
