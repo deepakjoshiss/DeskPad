@@ -1,4 +1,5 @@
 import Cocoa
+import IOSurface
 import ReSwift
 
 enum ScreenViewAction: Action {
@@ -278,6 +279,18 @@ class ScreenViewController: SubscriberViewController<ScreenViewData>, NSWindowDe
             previousScaleFactor = viewData.scaleFactor
             stream = nil
             view.window?.contentAspectRatio = viewData.resolution
+            // The captured IOSurface carries no colour space of its own, so
+            // CoreAnimation applies its own assumption when compositing it -
+            // measured as roughly a gamma-1.8 decode, which lifts blacks and
+            // washes the picture out. Frames arrive in the display's colour
+            // space (CGDisplayStream's documented default), so tagging the
+            // surface with that same space means no conversion happens at all
+            // and the mirror stays correct whichever profile the display is
+            // assigned. Do not "fix" this by forcing a colour space on either
+            // the stream or the display profile: a mismatched display profile
+            // only cancels part of the error and hides it.
+            let displayColorSpace = CGDisplayCopyColorSpace(display.displayID)
+            let displayColorSpaceProperties = displayColorSpace.copyPropertyList()
             let stream = CGDisplayStream(
                 dispatchQueueDisplay: display.displayID,
                 outputWidth: Int(viewData.resolution.width * viewData.scaleFactor),
@@ -289,6 +302,9 @@ class ScreenViewController: SubscriberViewController<ScreenViewData>, NSWindowDe
                 queue: .main,
                 handler: { [weak self] _, _, frameSurface, _ in
                     if let surface = frameSurface {
+                        if let properties = displayColorSpaceProperties {
+                            IOSurfaceSetValue(surface, kIOSurfaceColorSpace, properties)
+                        }
                         self?.view.layer?.contents = surface
                     }
                 }
