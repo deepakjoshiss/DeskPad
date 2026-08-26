@@ -29,6 +29,14 @@ DISPLAY_NAME="${DISPLAY_NAME:-DeskPad Dev Display}"
 KODI_APP="${KODI_APP:-/Applications/Kodi.app}"
 GUISETTINGS="${GUISETTINGS:-$HOME/Library/Application Support/Kodi/userdata/guisettings.xml}"
 
+# Netskope TLS inspection re-signs HTTPS with a private root, and Kodi ignores the
+# macOS keychain entirely - it trusts only its own bundled system/certs/cacert.pem,
+# which does not carry that root. Every repository fetch then fails with curl
+# error 60. SSL_CERT_FILE overrides that bundle, and it has to go through
+# launchctl rather than a plain export: `open -a` hands the launch to launchd, so
+# Kodi inherits launchd's environment and not this script's.
+CA_BUNDLE="${CA_BUNDLE:-$HOME/.certs/kodi-cacert-netskope.pem}"
+
 # Fullscreen at native 1x 1080p on the virtual display. Set to WINDOW for a
 # plain window instead.
 SCREENMODE="${SCREENMODE:-1920x1080p(1920x1080)}"
@@ -155,6 +163,14 @@ quit_kodi() {
 start_kodi() {
     [ -d "$KODI_APP" ] || fail "Kodi not found at: $KODI_APP"
     log "starting Kodi..."
+
+    # Before the launch, not after: Kodi reads SSL_CERT_FILE once, at startup.
+    if [ -r "$CA_BUNDLE" ]; then
+        launchctl setenv SSL_CERT_FILE "$CA_BUNDLE"
+    else
+        log "WARNING: no CA bundle at $CA_BUNDLE - repository fetches will fail with curl error 60"
+    fi
+
     open -a "$KODI_APP" || fail "failed to launch Kodi"
 
     local waited=0
