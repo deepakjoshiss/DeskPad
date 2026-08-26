@@ -100,13 +100,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         KodiRemote.shared.requestQuit { [weak self] delivered in
-            guard delivered else {
-                // Kodi was not listening, so there is nothing to wait for. The
-                // launcher's watcher still cleans up after the display goes.
-                self?.replyToTerminate()
-                return
+            // The reply lands on KodiRemote's own queue; everything it leads to
+            // is main-actor state, so hop before touching any of it.
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else {
+                        return
+                    }
+                    guard delivered else {
+                        // Kodi was not listening, so there is nothing to wait
+                        // for. The launcher's watcher still cleans up after the
+                        // display goes.
+                        self.replyToTerminate()
+                        return
+                    }
+                    self.waitForExit(of: kodi)
+                }
             }
-            self?.waitForExit(of: kodi)
         }
         return .terminateLater
     }

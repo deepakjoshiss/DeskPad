@@ -26,7 +26,16 @@ func kodi(on displayID: CGDirectDisplayID) -> NSRunningApplication? {
 /// inactive app does not have. Since the whole point here is to type while
 /// DeskPad - not Kodi - holds focus, an injected key event has nowhere to land.
 /// JSON-RPC sidesteps focus entirely; verified driving a background Kodi.
-final class KodiRemote {
+/// `@unchecked` rather than an actor, deliberately. Every mutable member below
+/// is touched only on `queue` - including `stateUpdateHandler` and the send
+/// completion, because the connection is started with `start(queue: queue)` - so
+/// the isolation is real, just invisible to the compiler.
+///
+/// An actor would express that in the type system but break the ordering this
+/// depends on: `Task { await remote.pressKey(...) }` has no FIFO guarantee
+/// between tasks, so at key-repeat rates keystrokes could reach Kodi out of
+/// order. A serial DispatchQueue does guarantee it.
+final class KodiRemote: @unchecked Sendable {
     static let shared = KodiRemote()
 
     private let queue = DispatchQueue(label: "com.jellyvin.deskpad.kodi-rpc")
@@ -49,14 +58,14 @@ final class KodiRemote {
     /// Asks Kodi to quit. `delivered` reports whether the request reached the
     /// socket, so a caller waiting on Kodi to exit can give up immediately rather
     /// than sitting out a timeout when Kodi was never listening.
-    func requestQuit(delivered: @escaping (Bool) -> Void) {
+    func requestQuit(delivered: @escaping @Sendable (Bool) -> Void) {
         send(method: "Application.Quit", params: [:], delivered: delivered)
     }
 
     /// Sent as a JSON-RPC *notification* - no `id`, so Kodi sends no reply and we
     /// never read. At key-repeat rates, waiting for a response per keystroke would
     /// serialise typing behind Kodi's answer.
-    private func send(method: String, params: [String: Any], delivered: ((Bool) -> Void)? = nil) {
+    private func send(method: String, params: [String: Any], delivered: (@Sendable (Bool) -> Void)? = nil) {
         let payload: [String: Any] = ["jsonrpc": "2.0", "method": method, "params": params]
         guard let data = try? JSONSerialization.data(withJSONObject: payload) else {
             delivered?(false)
