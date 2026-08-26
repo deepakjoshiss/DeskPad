@@ -21,7 +21,7 @@ class ScreenView: NSView {
     /// so the double click that hands the pointer over is not eaten by window
     /// activation when DeskPad is inactive.
     override func acceptsFirstMouse(for _: NSEvent?) -> Bool {
-        return true
+        true
     }
 
     /// The window is movable by its background, so AppKit would start a window
@@ -30,12 +30,12 @@ class ScreenView: NSView {
     /// own window on the display it is mirroring, where it appears to vanish.
     /// The titlebar still moves the window.
     override var mouseDownCanMoveWindow: Bool {
-        return false
+        false
     }
 
     /// Keystrokes only arrive at a view that can hold focus.
     override var acceptsFirstResponder: Bool {
-        return true
+        true
     }
 
     override func becomeFirstResponder() -> Bool {
@@ -52,6 +52,12 @@ class ScreenView: NSView {
     /// reach the first responder of the *key* window.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        // viewDidMoveToWindow can fire repeatedly - including with a nil window -
+        // and each call used to add another pair of observers that nothing ever
+        // removed.
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            NotificationCenter.default.removeObserver(self, name: name, object: nil)
+        }
         for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
             NotificationCenter.default.addObserver(
                 self,
@@ -217,7 +223,7 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
         applyModel()
     }
 
-    private var display: CGVirtualDisplay!
+    private var display: CGVirtualDisplay?
     private var stream: SCStream?
     private var captureOutput: DisplayCaptureOutput?
     private var captureTask: Task<Void, Never>?

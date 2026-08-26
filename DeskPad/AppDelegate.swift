@@ -3,7 +3,7 @@ import Cocoa
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var window: NSWindow!
+    private var window: NSWindow?
 
     /// The single owner of the app's state. Handed to whoever needs it rather
     /// than reached for globally.
@@ -16,7 +16,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         model.start()
 
         let viewController = ScreenViewController(model: model)
-        window = NSWindow(contentViewController: viewController)
+        let window = NSWindow(contentViewController: viewController)
         window.delegate = viewController
         window.title = "DeskPad"
         window.titlebarAppearsTransparent = true
@@ -35,6 +35,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.setFrameAutosaveName("MainWindow")
         window.setFrameUsingName("MainWindow")
         window.makeKeyAndOrderFront(nil)
+        self.window = window
 
         let mainMenu = NSMenu()
         let mainMenuItem = NSMenuItem()
@@ -67,7 +68,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
-        return true
+        true
     }
 
     /// Takes Kodi down with us, and - the whole point - does it *before* the
@@ -96,7 +97,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // backstop covers the ones that never report back at all - a connection
         // that stays stuck in setup has no completion and no exit to observe.
         DispatchQueue.main.asyncAfter(deadline: .now() + kodiQuitTimeout) { [weak self] in
-            self?.replyToTerminate()
+            MainActor.assumeIsolated {
+                guard let self, !self.hasRepliedToTerminate else {
+                    return
+                }
+                logDiagnostic("Kodi was asked to quit but had not exited after "
+                    + "\(Int(self.kodiQuitTimeout))s; quitting anyway. It may reappear on the "
+                    + "built-in display until it finishes shutting down.")
+                self.replyToTerminate()
+            }
         }
 
         KodiRemote.shared.requestQuit { [weak self] delivered in
@@ -123,22 +132,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let kodiQuitTimeout: TimeInterval = 8
 
+    private var kodiTerminationObserver: (any NSObjectProtocol)?
+
+    /// Replies once Kodi has actually exited.
+    ///
+    /// Driven by the notification macOS already publishes, rather than the
+    /// `usleep` loop this replaced - that parked an entire thread for up to the
+    /// full timeout to watch a flag that AppKit will simply tell us about.
     private func waitForExit(of kodi: NSRunningApplication) {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let deadline = Date().addingTimeInterval(self?.kodiQuitTimeout ?? 8)
-            while !kodi.isTerminated, Date() < deadline {
-                usleep(100_000)
+        kodiTerminationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let terminated = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard terminated?.processIdentifier == kodi.processIdentifier else {
+                return
             }
-            if !kodi.isTerminated {
-                logDiagnostic("Kodi was asked to quit but had not exited after "
-                    + "\(Int(self?.kodiQuitTimeout ?? 8))s; quitting anyway. It may reappear on the "
-                    + "built-in display until it finishes shutting down.")
+            MainActor.assumeIsolated {
+                self?.replyToTerminate()
             }
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    self?.replyToTerminate()
-                }
-            }
+        }
+
+        // Registered first, then checked: the other order leaves a window where
+        // Kodi exits in between and the notification is never seen. Replying
+        // twice is harmless - replyToTerminate only fires once.
+        if kodi.isTerminated {
+            replyToTerminate()
         }
     }
 

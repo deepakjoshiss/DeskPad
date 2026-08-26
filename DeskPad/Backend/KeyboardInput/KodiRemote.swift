@@ -4,7 +4,7 @@ import Network
 let kodiBundleIdentifier = "org.xbmc.kodi"
 
 func isKodi(_ pid: pid_t) -> Bool {
-    return NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == kodiBundleIdentifier
+    NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == kodiBundleIdentifier
 }
 
 /// Kodi, if it is the app showing on the given display.

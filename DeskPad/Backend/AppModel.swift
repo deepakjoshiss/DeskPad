@@ -79,9 +79,19 @@ final class AppModel {
     }
 
     private func readPointerLocation() {
+        // Unwrapped first: comparing two optionals directly would report the
+        // pointer as being on the mirrored display whenever *neither* side has
+        // one - before the virtual display exists, `nil == nil` is true.
+        guard let displayID else {
+            setPointerWithinScreen(false)
+            return
+        }
         let pointer = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) }
-        let isWithin = screen?.displayID == displayID
+        setPointerWithinScreen(screen?.displayID == displayID)
+    }
+
+    private func setPointerWithinScreen(_ isWithin: Bool) {
         if isPointerWithinScreen != isWithin {
             isPointerWithinScreen = isWithin
         }
