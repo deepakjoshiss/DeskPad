@@ -23,7 +23,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.styleMask.insert(.resizable)
         window.collectionBehavior.insert(.fullScreenNone)
 
-        window.setContentSize(CGSize(width: 960, height: 540))
+        window.setContentSize(CGSize(width: 1187, height: 668))
         window.center()
         // setFrameAutosaveName only registers the name; setFrameUsingName reports
         // whether a previously saved frame actually existed to restore.
