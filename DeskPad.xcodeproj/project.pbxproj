@@ -10,6 +10,7 @@
 		6DAA0001290000B6000000B6 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DAA0001290000A6000000A6 /* main.swift */; };
 		6DAA0001290000B5000000B5 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DAA0001290000A5000000A5 /* AppModel.swift */; };
 		6D2F148E280C211E00A3A2E5 /* ScreenViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D2F148D280C211E00A3A2E5 /* ScreenViewController.swift */; };
+		6DAA0001290000B7000000B7 /* CaptureErrorOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DAA0001290000A7000000A7 /* CaptureErrorOverlay.swift */; };
 		6D41B09F2879FAB6007CEB2F /* MouseInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D41B09E2879FAB6007CEB2F /* MouseInput.swift */; };
 		6DAA0001290000A1000000B1 /* Diagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DAA0001290000A1000000A1 /* Diagnostics.swift */; };
 		6DAA0001290000A2000000B2 /* WindowOwner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DAA0001290000A2000000A2 /* WindowOwner.swift */; };
@@ -24,6 +25,7 @@
 		6DAA0001290000A6000000A6 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		6DAA0001290000A5000000A5 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		6D2F148D280C211E00A3A2E5 /* ScreenViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ScreenViewController.swift; sourceTree = "<group>"; };
+		6DAA0001290000A7000000A7 /* CaptureErrorOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureErrorOverlay.swift; sourceTree = "<group>"; };
 		6D36BEB92801A39200EAB869 /* CGVirtualDisplayPrivate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CGVirtualDisplayPrivate.h; sourceTree = "<group>"; };
 		6D36BEBA2801A40600EAB869 /* DeskPad-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "DeskPad-Bridging-Header.h"; sourceTree = "<group>"; };
 		6D41B09E2879FAB6007CEB2F /* MouseInput.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MouseInput.swift; sourceTree = "<group>"; };
@@ -79,6 +81,7 @@
 			isa = PBXGroup;
 			children = (
 				6D2F148D280C211E00A3A2E5 /* ScreenViewController.swift */,
+				6DAA0001290000A7000000A7 /* CaptureErrorOverlay.swift */,
 			);
 			path = Screen;
 			sourceTree = "<group>";
@@ -239,6 +242,7 @@
 				6DAA0001290000A3000000B3 /* KodiRemote.swift in Sources */,
 				6DAA0001290000A4000000B4 /* KeyboardInput.swift in Sources */,
 				6D2F148E280C211E00A3A2E5 /* ScreenViewController.swift in Sources */,
+				6DAA0001290000B7000000B7 /* CaptureErrorOverlay.swift in Sources */,
 				6DC044522801877F00281728 /* AppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

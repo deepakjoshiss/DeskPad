@@ -130,9 +130,11 @@ class ScreenView: NSView {
 /// exactly what a main-actor view controller should not be conforming to.
 private final class DisplayCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     private let onFrame: (IOSurfaceRef) -> Void
+    private let onStop: (SCStream, Error) -> Void
 
-    init(onFrame: @escaping (IOSurfaceRef) -> Void) {
+    init(onFrame: @escaping (IOSurfaceRef) -> Void, onStop: @escaping (SCStream, Error) -> Void) {
         self.onFrame = onFrame
+        self.onStop = onStop
         super.init()
     }
 
@@ -163,10 +165,14 @@ private final class DisplayCaptureOutput: NSObject, SCStreamOutput, SCStreamDele
         return SCFrameStatus(rawValue: rawStatus) == .complete
     }
 
-    /// The stream stopping is otherwise silent - the mirror simply freezes on its
-    /// last frame - so it is exactly the kind of failure the diagnostic log is for.
-    func stream(_: SCStream, didStopWithError error: Error) {
-        logDiagnostic("screen capture stopped: \(error). The mirror is frozen on its last frame.")
+    /// Reports *which* stream stopped, because a stop is not by itself news: a
+    /// stream this controller already replaced can report its own teardown long
+    /// after something healthy took its place. Only the controller knows which
+    /// stream is the live one, so it decides what the stop means - and does the
+    /// logging, since "capture stopped" and "the user needs to do something about
+    /// it" turned out to be very different events.
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        onStop(stream, error)
     }
 }
 
@@ -210,6 +216,26 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
             }
             forwardKey(onDisplay: displayID, keyCode: keyCode, characters: characters, modifiers: modifiers)
         }
+
+        errorOverlay.translatesAutoresizingMaskIntoConstraints = false
+        errorOverlay.onReload = { [weak self] in
+            self?.reloadCapture()
+        }
+        screenView.addSubview(errorOverlay)
+        // Fixed width so the message wraps to a predictable shape, but never wider
+        // than the mirror - which the user is free to resize down to a sliver.
+        let overlayWidth = errorOverlay.widthAnchor.constraint(equalToConstant: 380)
+        overlayWidth.priority = .defaultHigh
+        NSLayoutConstraint.activate([
+            errorOverlay.centerXAnchor.constraint(equalTo: screenView.centerXAnchor),
+            errorOverlay.centerYAnchor.constraint(equalTo: screenView.centerYAnchor),
+            overlayWidth,
+            errorOverlay.widthAnchor.constraint(
+                lessThanOrEqualTo: screenView.widthAnchor,
+                multiplier: 0.9
+            ),
+        ])
+
         view = screenView
     }
 
@@ -223,6 +249,12 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
         applyModel()
     }
 
+    private let errorOverlay = CaptureErrorOverlay()
+    /// Whether the physical screens are off. A capture stop means something quite
+    /// different either side of this.
+    private var areScreensAsleep = false
+    private var screensDidSleepObserver: (any NSObjectProtocol)?
+    private var screensDidWakeObserver: (any NSObjectProtocol)?
     private var display: CGVirtualDisplay?
     private var stream: SCStream?
     private var captureOutput: DisplayCaptureOutput?
@@ -287,8 +319,37 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
         // Force the launch resolution explicitly once the display registers.
         applyPreferredMode(to: display.displayID, width: 1920, height: 1080, attemptsRemaining: 20)
 
+        observeScreenSleep()
         observeModel()
         applyModel()
+    }
+
+    /// Screen sleep and wake come from NSWorkspace's own centre, not the default
+    /// one - they are not posted to the default centre at all.
+    private func observeScreenSleep() {
+        let center = NSWorkspace.shared.notificationCenter
+        screensDidSleepObserver = center.addObserver(
+            forName: NSWorkspace.screensDidSleepNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.areScreensAsleep = true
+            }
+        }
+        screensDidWakeObserver = center.addObserver(
+            forName: NSWorkspace.screensDidWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else {
+                    return
+                }
+                self.areScreensAsleep = false
+                self.recoverIfCaptureIsDown()
+            }
+        }
     }
 
     /// Re-arms after every change, because `withObservationTracking` reports one.
@@ -401,6 +462,7 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
         guard let shareableDisplay = await shareableDisplay(matching: displayID) else {
             logDiagnostic("the virtual display never appeared in ScreenCaptureKit's "
                 + "inventory; the mirror will stay blank.")
+            presentCaptureError("The virtual display did not appear in ScreenCaptureKit's inventory.")
             return
         }
         guard !Task.isCancelled else {
@@ -409,7 +471,22 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
 
         let output = DisplayCaptureOutput { [weak self] surface in
             DispatchQueue.main.async {
-                self?.view.layer?.contents = surface
+                MainActor.assumeIsolated {
+                    guard let self else {
+                        return
+                    }
+                    self.view.layer?.contents = surface
+                    // A frame actually landing is the only proof the mirror is live
+                    // again, so that - rather than a stream merely having started -
+                    // is what takes the panel down.
+                    self.errorOverlay.dismiss()
+                }
+            }
+        } onStop: { [weak self] stoppedStream, error in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self?.captureDidStop(stoppedStream, error: error)
+                }
             }
         }
         let stream = SCStream(
@@ -423,6 +500,8 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
         } catch {
             logDiagnostic("could not start screen capture: \(error). Check that DeskPad "
                 + "still holds Screen Recording permission in System Settings > Privacy & Security.")
+            presentCaptureError("\(error.localizedDescription). Check that DeskPad still holds "
+                + "Screen Recording permission in System Settings > Privacy & Security.")
             return
         }
         guard !Task.isCancelled else {
@@ -431,6 +510,72 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
         }
         self.stream = stream
         captureOutput = output
+        // This attempt is over even though the panel stays up until a frame lands,
+        // so the button goes live again rather than sticking on "Reloading..."
+        // forever if the new stream starts but never delivers anything.
+        errorOverlay.setReloading(false)
+    }
+
+    /// Decides what a stopped stream actually means.
+    ///
+    /// Display sleep is the common case and is *not* a failure. Turning the screen
+    /// off takes the virtual display out of ScreenCaptureKit's inventory, which
+    /// arrives here as a stop - measured as `-3815`, to the second, against
+    /// pmset's "Display is turned off". It resolves itself on wake, so putting the
+    /// reload panel up for it cries wolf: worse, the layer keeps its last frame,
+    /// so the user wakes to a mirror that looks perfectly fine with an error panel
+    /// sitting on top of it. That is the false alarm this guards against.
+    private func captureDidStop(_ stoppedStream: SCStream, error: Error) {
+        // A stream that has already been replaced says nothing about the mirror
+        // the user is looking at. Only the live one is worth reacting to.
+        guard stoppedStream === stream else {
+            return
+        }
+        stream = nil
+        captureOutput = nil
+
+        guard !areScreensAsleep else {
+            logDiagnostic("screen capture stopped while the screens were asleep: "
+                + "\(error). Recovering on wake rather than asking the user.")
+            return
+        }
+        logDiagnostic("screen capture stopped: \(error). Offering a reload on the mirror.")
+        presentCaptureError("\(error.localizedDescription).")
+    }
+
+    /// Waking is the moment the virtual display comes back, so it is the moment to
+    /// rebuild - otherwise the mirror stays frozen on the frame it had when the
+    /// screen went off, which is indistinguishable from a working one.
+    private func recoverIfCaptureIsDown() {
+        guard stream == nil else {
+            return
+        }
+        reloadCapture()
+    }
+
+    /// Rebuilds the stream at the display's *current* geometry, which is not
+    /// necessarily what the dead stream was built for - a reload may be happening
+    /// precisely because the display changed underneath it.
+    ///
+    /// `capturedResolution` and `capturedScaleFactor` are updated in step so that
+    /// the next `applyModel` still recognises a genuine later geometry change
+    /// instead of mistaking it for the size this reload already covered.
+    private func reloadCapture() {
+        guard model.resolution != .zero else {
+            presentCaptureError("The virtual display has not published a resolution yet.")
+            return
+        }
+        errorOverlay.setReloading(true)
+        capturedResolution = model.resolution
+        capturedScaleFactor = model.scaleFactor
+        startCapture(
+            pixelWidth: Int(model.resolution.width * model.scaleFactor),
+            pixelHeight: Int(model.resolution.height * model.scaleFactor)
+        )
+    }
+
+    private func presentCaptureError(_ message: String) {
+        errorOverlay.present(message: message)
     }
 
     private func configuration(
