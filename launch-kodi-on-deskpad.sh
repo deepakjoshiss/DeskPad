@@ -89,6 +89,21 @@ virtual_display_attached() {
     "$TOOLS/display_id.py" >/dev/null 2>&1
 }
 
+# Whether the physical screens are off.
+#
+# This has to be asked because display sleep takes the *virtual* display out of
+# CoreGraphics' list too, which is indistinguishable from DeskPad having exited.
+# Measured 2026-09-06: the screen went off at 13:12:52, and the teardown watcher
+# declared "DeskPad's display has gone" at 13:12:57 and tore down a session whose
+# DeskPad was running the whole time - and stayed running for another 15 hours.
+#
+# Not IODisplayWrangler's CurrentPowerState, the usual answer: that property set
+# is empty on Apple Silicon, so the check reads "awake" forever and the guard
+# silently never fires.
+screens_asleep() {
+    "$TOOLS/screens_asleep.py" >/dev/null 2>&1
+}
+
 ensure_deskpad() {
     if display_present; then
         log "virtual display '$DISPLAY_NAME' already present"
@@ -306,6 +321,13 @@ watch_for_deskpad_exit() {
     while :; do
         if virtual_display_attached; then
             sleep 2
+            continue
+        fi
+        # A dark screen is not a departed DeskPad. Wait the sleep out rather than
+        # ending a live session; if DeskPad really did exit while the screens were
+        # off, the teardown simply happens on wake instead.
+        if screens_asleep; then
+            sleep 5
             continue
         fi
         # Re-running the launcher brings the display back within a second or two,
