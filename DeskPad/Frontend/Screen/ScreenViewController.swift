@@ -215,6 +215,7 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
     private var screensDidWakeObserver: (any NSObjectProtocol)?
     private var display: CGVirtualDisplay?
     private var stream: SCStream?
+    private var indicatorTask: Task<Void, Never>?
     private var captureOutput: DisplayCaptureOutput?
     private var captureTask: Task<Void, Never>?
     /// Frames are decoded off the main thread; only the layer assignment hops
@@ -409,6 +410,7 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
     }
 
     private func restartCapture(pixelWidth: Int, pixelHeight: Int) async {
+        indicatorTask?.cancel()
         if let stream {
             self.stream = nil
             captureOutput = nil
@@ -417,7 +419,7 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
         guard !Task.isCancelled, let displayID = display?.displayID else {
             return
         }
-        guard let capturedDisplay = await shareableDisplay(matching: displayID) else {
+        guard let (filter, excluded) = await captureFilter(for: displayID) else {
             logDiagnostic("the virtual display never appeared in ScreenCaptureKit's "
                 + "inventory; the mirror will stay blank.")
             presentCaptureError("The virtual display did not appear in ScreenCaptureKit's inventory.")
@@ -451,7 +453,7 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
             }
         }
         let stream = SCStream(
-            filter: SCContentFilter(display: capturedDisplay, excludingWindows: []),
+            filter: filter,
             configuration: displayStreamConfiguration(
                 pixelWidth: pixelWidth,
                 pixelHeight: pixelHeight,
@@ -476,6 +478,9 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
         }
         self.stream = stream
         captureOutput = output
+        indicatorTask = keepExcludingRecordingIndicators(on: displayID, excluded: excluded) { [weak self] filter in
+            try? await self?.stream?.updateContentFilter(filter)
+        }
         // This attempt is over even though the panel stays up until a frame lands,
         // so the button goes live again rather than sticking on "Reloading..."
         // forever if the new stream starts but never delivers anything.
@@ -499,6 +504,7 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
         }
         stream = nil
         captureOutput = nil
+        indicatorTask?.cancel()
 
         guard !areScreensAsleep else {
             logDiagnostic("screen capture stopped while the screens were asleep: "

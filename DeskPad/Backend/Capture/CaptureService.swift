@@ -83,11 +83,21 @@ func displayStreamConfiguration(
     return configuration
 }
 
+/// What every capture of the virtual display records: the whole display, minus
+/// macOS's recording indicators - the purple dot it draws in the corner of each
+/// display, and the purple pill in the menu bar - which DeskPad's own capture
+/// causes, so they would otherwise sit in the mirror, every screenshot and every
+/// recording. They are only left out of DeskPad's copy; the real displays still
+/// show them.
+///
 /// The virtual display does not show up in ScreenCaptureKit's inventory the
-/// instant it is created, so poll briefly instead of giving up on the first
-/// miss - the same reason `applyPreferredMode` retries.
-func shareableDisplay(matching displayID: CGDirectDisplayID) async -> SCDisplay? {
-    for attempt in 0 ..< 20 {
+/// instant it is created, so this polls briefly instead of giving up on the
+/// first miss - the same reason `applyPreferredMode` retries.
+func captureFilter(
+    for displayID: CGDirectDisplayID,
+    attempts: Int = 20
+) async -> (filter: SCContentFilter, excluded: Set<CGWindowID>)? {
+    for attempt in 0 ..< attempts {
         if attempt > 0 {
             try? await Task.sleep(nanoseconds: 250_000_000)
         }
@@ -99,8 +109,13 @@ func shareableDisplay(matching displayID: CGDirectDisplayID) async -> SCDisplay?
                 false,
                 onScreenWindowsOnly: false
             )
-            if let match = content.displays.first(where: { $0.displayID == displayID }) {
-                return match
+            if let display = content.displays.first(where: { $0.displayID == displayID }) {
+                let bounds = CGDisplayBounds(displayID)
+                let indicators = content.windows.filter { isRecordingIndicator($0) && $0.frame.intersects(bounds) }
+                return (
+                    SCContentFilter(display: display, excludingWindows: indicators),
+                    Set(indicators.map(\.windowID))
+                )
             }
         } catch {
             logDiagnostic("cannot list shareable content: \(error). DeskPad most likely "
@@ -109,6 +124,46 @@ func shareableDisplay(matching displayID: CGDirectDisplayID) async -> SCDisplay?
         }
     }
     return nil
+}
+
+/// The corner dot is the WindowServer's own window - its "application" has an
+/// empty bundle id, not a missing one - and the pill is Control Centre's
+/// audio/video module.
+private func isRecordingIndicator(_ window: SCWindow) -> Bool {
+    switch window.owningApplication?.bundleIdentifier ?? "" {
+    case "": window.title == "StatusIndicator"
+    case "com.apple.controlcenter": window.title == "AudioVideoModule"
+    default: false
+    }
+}
+
+/// Keeps a stream's filter current. macOS recreates the indicator windows, with
+/// new ids, whenever anything starts or stops capturing - DeskPad's own streams
+/// included, whose indicator only appears once they are running, hence the
+/// early first check. The filter is replaced in place, and only on a change.
+@MainActor
+func keepExcludingRecordingIndicators(
+    on displayID: CGDirectDisplayID,
+    excluded: Set<CGWindowID>,
+    apply: @escaping @MainActor (sending SCContentFilter) async -> Void
+) -> Task<Void, Never> {
+    Task { @MainActor in
+        var excluded = excluded
+        var delay: Duration = .seconds(1)
+        while !Task.isCancelled {
+            try? await Task.sleep(for: delay)
+            delay = .seconds(20)
+            guard
+                !Task.isCancelled,
+                let current = await captureFilter(for: displayID, attempts: 1),
+                current.excluded != excluded
+            else {
+                continue
+            }
+            excluded = current.excluded
+            await apply(current.filter)
+        }
+    }
 }
 
 // MARK: - Errors
@@ -505,7 +560,7 @@ final class RecordingSession: @unchecked Sendable {
         writer.add(input)
     }
 
-    func start(display: SCDisplay, configuration: SCStreamConfiguration) async throws {
+    func start(filter: SCContentFilter, configuration: SCStreamConfiguration) async throws {
         let output = DisplayCaptureOutput { [weak self] pixelBuffer, displayTime in
             self?.append(pixelBuffer, displayTime: displayTime)
         } onStop: { [weak self] _, error in
@@ -513,15 +568,15 @@ final class RecordingSession: @unchecked Sendable {
                 self?.streamDidStop(error)
             }
         }
-        let stream = SCStream(
-            filter: SCContentFilter(display: display, excludingWindows: []),
-            configuration: configuration,
-            delegate: output
-        )
+        let stream = SCStream(filter: filter, configuration: configuration, delegate: output)
         try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: queue)
         try await stream.startCapture()
         self.stream = stream
         self.output = output
+    }
+
+    func updateFilter(_ filter: sending SCContentFilter) async {
+        try? await stream?.updateContentFilter(filter)
     }
 
     /// Stops capturing and finishes the file. Returns nil once the movie is
@@ -646,6 +701,8 @@ final class CaptureService {
     private var stream: SCStream?
     private var captureOutput: DisplayCaptureOutput?
     private var streamTask: Task<Void, Never>?
+    private var indicatorTask: Task<Void, Never>?
+    private var recordingIndicatorTask: Task<Void, Never>?
     private let captureQueue = DispatchQueue(label: "com.jellyvin.deskpad.api-capture")
     private var areScreensAsleep = false
     private var observers: [any NSObjectProtocol] = []
@@ -670,6 +727,7 @@ final class CaptureService {
     }
 
     private func rebuildStream() async {
+        indicatorTask?.cancel()
         if let stream {
             self.stream = nil
             captureOutput = nil
@@ -694,7 +752,7 @@ final class CaptureService {
         configuration.queueDepth = 5
         frames.begin(colorSpace: CGColorSpace(name: configuration.colorSpaceName) ?? CGColorSpace(name: CGColorSpace.sRGB)!)
 
-        guard let display = await shareableDisplay(matching: displayID) else {
+        guard let (filter, excluded) = await captureFilter(for: displayID) else {
             frames.stop(.failed("the virtual display is not in ScreenCaptureKit's inventory"))
             return
         }
@@ -712,11 +770,7 @@ final class CaptureService {
                 }
             }
         }
-        let stream = SCStream(
-            filter: SCContentFilter(display: display, excludingWindows: []),
-            configuration: configuration,
-            delegate: output
-        )
+        let stream = SCStream(filter: filter, configuration: configuration, delegate: output)
         do {
             try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: captureQueue)
             try await stream.startCapture()
@@ -732,6 +786,9 @@ final class CaptureService {
         }
         self.stream = stream
         captureOutput = output
+        indicatorTask = keepExcludingRecordingIndicators(on: displayID, excluded: excluded) { [weak self] filter in
+            try? await self?.stream?.updateContentFilter(filter)
+        }
     }
 
     /// Display sleep takes the virtual display out of ScreenCaptureKit's
@@ -743,6 +800,7 @@ final class CaptureService {
         }
         stream = nil
         captureOutput = nil
+        indicatorTask?.cancel()
         if areScreensAsleep {
             frames.stop(.displayOff)
         } else {
@@ -823,7 +881,7 @@ final class CaptureService {
         isStartingRecording = true
         defer { isStartingRecording = false }
 
-        guard let display = await shareableDisplay(matching: displayID) else {
+        guard let (filter, excluded) = await captureFilter(for: displayID) else {
             return .failure(.captureFailed("the virtual display is not in ScreenCaptureKit's inventory"))
         }
 
@@ -854,7 +912,7 @@ final class CaptureService {
                     }
                 }
             }
-            try await session.start(display: display, configuration: configuration)
+            try await session.start(filter: filter, configuration: configuration)
         } catch {
             return .failure(.captureFailed("could not start recording: \(error.localizedDescription)"))
         }
@@ -862,6 +920,9 @@ final class CaptureService {
         recording = session
         lastRecordingFailure = nil
         onRecordingChange?()
+        recordingIndicatorTask = keepExcludingRecordingIndicators(on: displayID, excluded: excluded) { filter in
+            await session.updateFilter(filter)
+        }
 
         if let maxSeconds {
             Task { [weak self, weak session] in
@@ -886,6 +947,7 @@ final class CaptureService {
             return .failure(.denied("this recording was started by another app or from DeskPad's menu"))
         }
         recording = nil
+        recordingIndicatorTask?.cancel()
         onRecordingChange?()
 
         if let failure = await session.finish() {
@@ -907,6 +969,7 @@ final class CaptureService {
             return
         }
         recording = nil
+        recordingIndicatorTask?.cancel()
         lastRecordingFailure = message
         logDiagnostic(message)
         onRecordingChange?()

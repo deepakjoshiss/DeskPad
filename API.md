@@ -4,7 +4,9 @@ Screenshots and recordings of the DeskPad virtual display, and launching Kodi
 on it, for other apps and agents. DeskPad holds the Screen Recording
 permission, so callers do not need their own.
 
-The cursor is never in the image, and no audio is recorded.
+The cursor is never in the image, and no audio is recorded. Neither are macOS's
+purple recording indicators (the corner dot and the menu-bar pill), which
+DeskPad's own capture causes; the real displays still show them.
 
 The socket exists only while DeskPad runs. To start DeskPad and Kodi together
 from nothing, use `open -a "DeskPad Dev" --args --launch-kodi` instead.
