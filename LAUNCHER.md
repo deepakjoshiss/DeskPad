@@ -1,54 +1,73 @@
-# Kodi on DeskPad — launcher
+# Kodi on DeskPad — launching Kodi
 
-One click brings up the DeskPad virtual display and starts Kodi on it.
+DeskPad starts Kodi on its own virtual display. Any of these does it:
 
-    open "Kodi on DeskPad.app"      # or double-click it in Finder
+| From | How |
+|---|---|
+| The menu | **Kodi › Launch Kodi on DeskPad**, in the main menu or under the menu bar icon |
+| DeskPad starting | **Kodi › Launch Kodi When DeskPad Starts** — opening DeskPad is then the one click |
+| A script or app, DeskPad not running | `open -a "DeskPad Dev" --args --launch-kodi` |
+| A script or app, DeskPad running | `{"op":"kodi_launch"}` on the API socket — see [API.md](API.md) |
+
+All of them run the same code, `DeskPad/Backend/Kodi/KodiLauncher.swift`, one
+launch at a time. Launching again while Kodi is already on the display is
+harmless and returns straight away.
 
 DeskPad is deliberately **left running when Kodi quits**. The reverse is linked:
 **quitting DeskPad quits Kodi first**, then puts Kodi's display settings back —
 see "Teardown" below.
 
+This replaced a bash launcher (`launch-kodi-on-deskpad.sh`, a double-clickable
+`Kodi on DeskPad.app`, and three Python helpers), removed on 2026-09-25. DeskPad
+knows things the script had to guess or poll for — when the display exists,
+whether it is quitting or the screens merely slept — and can refuse a second
+launch that would otherwise race the first.
+
 ## Files
 
 | Path | Role |
 |---|---|
-| `Kodi on DeskPad.app` | Double-clickable wrapper (`LSUIElement`, so no Dock icon) |
-| `launch-kodi-on-deskpad.sh` | All the logic; safe to run directly in a terminal |
-| `tools/kodi_rpc.py` | Kodi JSON-RPC client over its raw TCP socket (port 9090) |
-| `tools/patch_guisettings.py` | Surgical editor for Kodi's `guisettings.xml` |
-| `tools/display_id.py` | Looks up the virtual display's current `CGDirectDisplayID` (ctypes, no compiled helper) |
-| `~/Library/Logs/kodi-on-deskpad.log` | Per-run log (the wrapper's stdout, and the teardown watcher's) |
+| `DeskPad/Backend/Kodi/KodiLauncher.swift` | The launch and the settings restore |
+| `DeskPad/Backend/Kodi/KodiProtocol.swift` | `guisettings.xml` editing, and request/reply JSON-RPC over Kodi's raw TCP socket (port 9090) |
+| `tools/kodi_protocol_check.swift` | Self-check for the above; no Kodi needed |
+| `tools/kodi_rpc.py` | JSON-RPC from a terminal, for poking at Kodi by hand |
+| `~/Library/Logs/deskpad-dev.log` | Where a launch reports what went wrong (and where Kodi ended up) |
 | `~/Library/Application Support/kodi-on-deskpad/pre-session-settings` | Kodi's display settings as they were before this session, awaiting restore |
-
-Run the script directly to see what it's doing; the `.app` only exists to make
-it clickable and logs to the file above.
 
 ## What it does
 
-1. Starts `DeskPad Dev.app` if the virtual display isn't already present, and
-   **waits for the display to register**.
-2. If Kodi isn't running, *predicts* the monitor string and writes it to
+1. Records Kodi's display settings, before anything is patched.
+2. Waits for the virtual display to be registered with macOS — normally already
+   the case, since it is DeskPad's own.
+3. If Kodi isn't running, *predicts* the monitor string and writes it to
    `guisettings.xml` before launching, so Kodi initialises on the right display
    in one go (see "The prediction" below).
-3. Starts Kodi if it isn't running, waiting until JSON-RPC answers.
-4. Asks Kodi which monitor option corresponds to our display — the
+4. Starts Kodi if it isn't running, waiting until JSON-RPC answers.
+5. Asks Kodi which monitor option corresponds to our display — the
    **authoritative** answer.
-5. If Kodi isn't already on it: stops Kodi, patches `guisettings.xml`, restarts Kodi.
-6. Verifies Kodi ended up on the right display.
+6. If Kodi isn't already on it: stops Kodi, patches `guisettings.xml`, restarts Kodi.
+7. Verifies Kodi ended up on the right display, and reports failure if not.
 
-A cold start is a single Kodi launch (~4s) when the prediction holds; if it
-doesn't, step 5 corrects it at the cost of one extra Kodi launch (~20s). It's
-idempotent — clicking twice is harmless.
+A cold start is a single Kodi launch (~3s) when the prediction holds; if it
+doesn't, step 6 corrects it at the cost of one extra Kodi launch (~20s).
+
+Kodi is given the Netskope CA bundle at launch (`SSL_CERT_FILE`,
+`REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, pointing at
+`~/.certs/kodi-cacert-netskope.pem`), through `NSWorkspace`'s launch
+configuration — so only Kodi gets it. The old script used `launchctl setenv`,
+which handed it to every app launched afterwards. `SSL_CERT_FILE` covers Kodi's
+libcurl and the Python stdlib; `requests` ignores it (`script.module.requests`
+pins certifi's bundle) and reads the other two.
 
 ### The prediction
 
 Kodi's session number is empirically `CGDirectDisplayID - 1`, consistent across
-five measured sessions (`47/48/49/50/51` → `46/47/48/49/50`).
+seven measured sessions (`47/48/49/50/51` → `46/47/48/49/50`; `24/25` → `23/24`).
 
 **This is a heuristic, not a contract.** The mechanism is undocumented, and it
 may well not hold with a third display attached or on a different Kodi build.
-It is therefore only ever used to *guess* — step 4 still asks Kodi for the real
-value and step 5 corrects a wrong guess. Never make this offset load-bearing;
+It is therefore only ever used to *guess* — step 5 still asks Kodi for the real
+value and step 6 corrects a wrong guess. Never make this offset load-bearing;
 if you remove the authoritative check, a bad guess silently strands Kodi on the
 built-in display.
 
@@ -60,53 +79,56 @@ prediction lets us patch *before* Kodi's first launch.
 ## Teardown
 
 Quitting DeskPad ends the whole session: Kodi is quit and its display settings
-are put back the way they were. It is split across the two halves, and the split
-is not arbitrary — each step has to happen at a moment only one of them can see.
+are put back the way they were.
 
     Cmd-Q DeskPad
       → DeskPad asks Kodi to quit and holds its own termination open
       → Kodi exits (~2s) while the virtual display is still there
+      → DeskPad restores guisettings.xml
       → DeskPad finishes quitting; the display goes
-      → the watcher sees the display go and restores guisettings.xml, then exits
 
 **Kodi must be gone before the display is.** The virtual display exists only as
 long as DeskPad's process does, so a Kodi still running when DeskPad exits is
 instantly homeless: macOS moves it to the built-in display, where it reappears
-*fullscreen across the user's actual screen* until it finishes quitting. Only
-DeskPad can prevent that, because only DeskPad knows it is about to quit. It uses
-`.terminateLater` rather than blocking in `applicationWillTerminate`, so the run
-loop keeps turning and the mirror carries on rendering while Kodi shuts down.
+*fullscreen across the user's actual screen* until it finishes quitting. DeskPad
+uses `.terminateLater` rather than blocking in `applicationWillTerminate`, so the
+run loop keeps turning and the mirror carries on rendering while Kodi shuts down.
 Measured: Kodi exits 1.9s after Cmd-Q and 0.4s before the display, and never
 appears on the built-in display at all (0 of ~300 samples at 100ms).
 
 **The settings restore must happen after Kodi is gone**, because Kodi writes its
-settings out on the way down and would clobber an earlier one. That is the
-watcher's job, and it stays in the launcher: DeskPad has no business knowing
-about `guisettings.xml`, and the restore has to outlive DeskPad anyway.
+settings out on the way down and would clobber an earlier one. It checks for a
+running Kodi itself, so a Kodi that outlives the quit timeout is left alone.
 
-The watcher is also the fallback for everything DeskPad cannot cover — being
-killed rather than quit, or Kodi ignoring the request — since it keys on the
-display disappearing rather than on a clean quit. In the normal case it finds
-Kodi already gone and only restores the settings.
+This used to be a watcher script that outlived DeskPad and restored the settings
+when the display disappeared. It had to guess whether a vanished display meant
+DeskPad had quit or the screens had merely slept — and guessed wrong once
+(2026-09-06), tearing down a live session. DeskPad knows which it is.
+
+While a session is recorded, a Kodi that has strayed off our display is quit too,
+since its settings cannot be restored while it runs.
 
 Termination can never hang on this. Every path ends at a single reply, including
 a backstop timer for the case where the connection is stuck in setup, so there is
-neither a completion to wait for nor a process exit to observe.
+neither a completion to wait for nor a process exit to observe. Quitting while a
+recording runs finishes the movie first, and re-issues the quit from a run loop
+block: re-entering `terminate` from main-queue work deadlocked against the Kodi
+shutdown, whose reply is itself main-queue work.
 
 Only `videoscreen.monitor` and `videoscreen.screenmode` are restored — the two
-the launcher changes. Restoring a whole backup of `guisettings.xml` would throw
+the launch changes. Restoring a whole backup of `guisettings.xml` would throw
 away every other setting touched during the session.
 
 **Never capture the pre-session values while a session is live.** They are read
-once, before anything is patched, and kept in a file so a watcher that dies
+once, before anything is patched, and kept in a file so a session that ends
 without restoring does not cost the real values. If the record is absent *and*
 the file already names our own display, the capture falls back to `Default`:
 restoring the DeskPad display would strand Kodi on a display that no longer
 exists.
 
-**A missed restore is not fatal.** Log out with a session live and the settings
-stay patched; Kodi then finds a display that isn't there and falls back to
-`Default` on its own, and the next launcher run re-converges.
+**A missed restore is not fatal.** Kill DeskPad, or log out with a session live,
+and the settings stay patched; Kodi then finds a display that isn't there and
+falls back to `Default` on its own, and the next launch re-converges.
 
 ## Hard-won details
 
@@ -129,26 +151,33 @@ the target display.
 **`default="true"` makes Kodi ignore a setting's stored value.** A setting
 written as `<setting id="videoscreen.monitor" default="true">DeskPad Dev Display
 (46)</setting>` is treated as "use the built-in default" — Kodi loads `Default`
-and quietly ignores the text. `patch_guisettings.py` strips the attribute; that
-single detail is the difference between working and silently doing nothing.
+and quietly ignores the text. `GuiSettings` strips the attribute; that single
+detail is the difference between working and silently doing nothing.
 
 **Kodi persists settings on change, not just on clean exit.** So a `kill -9`
 doesn't necessarily discard a settings change — but Kodi *will* overwrite edits
 made underneath a running instance. Hence: stop, patch, start.
 
-**`pgrep -f` matches command lines that merely mention what you searched for.**
-The teardown watcher originally polled for DeskPad's process this way, and any
-other process whose arguments contained the app's path — a `grep`, an editor, a
-script polling for the same thing — read as "DeskPad is still running", so the
-teardown silently never fired. Measured: a test loop running `pgrep -f "DeskPad
-Dev.app/Contents/MacOS/"` held the watcher off for a full 40s, and it fired the
-instant that loop exited. Process checks here are anchored with `^` so they match
-a real command line rather than a mention of one; the watcher avoids the question
-altogether by asking CoreGraphics whether the display is attached.
+**Kodi can throw a correct monitor setting away at startup.** Measured
+2026-09-06, repeatedly: Kodi discarded a correct stored `videoscreen.monitor`
+about 3 seconds after launch — before its JSON-RPC even answered — and rewrote
+it as `default="true">Default` (and `videoscreen.screenmode` as `WINDOW`). Yet
+~20s later its option list contained the exact string it had rejected: the list
+comes from a later, fuller enumeration than the one the setting was validated
+against. So "Kodi lists the option" is not evidence the setting will stick. The
+launch reports this as a failure rather than looping; launching again sometimes
+helps and sometimes cannot.
+
+**Process checks are by bundle id.** `NSRunningApplication` asked for
+`org.xbmc.kodi`, never `pgrep -f`, which matches any command line that merely
+*mentions* the path — a `grep`, an editor, a polling script. That held the old
+watcher off for 40s once, and fired the instant the unrelated loop exited.
 
 **The virtual display needs a moment, and Kodi enumerates displays only at
 startup.** Launch Kodi too early and it lands on the built-in screen with no
-error. The launcher waits for the display first.
+error. The launcher waits for the display first — and a Kodi started before
+DeskPad can never see the display at all, however often the launch is retried,
+until Kodi itself is restarted.
 
 ## Input on the mirror
 
@@ -287,30 +316,30 @@ sharing a vendor/product/serial identity, and the second one silently fails with
 
 ## Configuration
 
-Override via environment variables:
+    defaults write com.jellyvin.deskpad kodiScreenMode WINDOW    # windowed instead of fullscreen
 
-    SCREENMODE=WINDOW ./launch-kodi-on-deskpad.sh   # windowed instead of fullscreen
-
-| Variable | Default |
+| Setting | Default |
 |---|---|
-| `DESKPAD_APP` | `/Users/deepak/work/apps/deskpad/DeskPad Dev.app` |
-| `DISPLAY_NAME` | `DeskPad Dev Display` |
-| `KODI_APP` | `/Applications/Kodi.app` |
-| `SCREENMODE` | `1920x1080p(1920x1080)` (native 1x 1080p; `WINDOW` for windowed) |
+| `kodiScreenMode` | `1920x1080p(1920x1080)` (native 1x 1080p; `WINDOW` for windowed) |
+| `launchKodiAtStart` | off — toggled from the Kodi menu |
+
+Kodi is found by bundle id (`org.xbmc.kodi`), so it can live anywhere.
 
 ## Troubleshooting
 
-**DeskPad's window is blank / launcher times out waiting for the display.**
-DeskPad needs Screen Recording permission: System Settings → Privacy & Security
-→ Screen Recording. Note this grant is tied to the app's code signature — see
-the signing note below.
+**DeskPad's window is blank.** DeskPad needs Screen Recording permission: System
+Settings → Privacy & Security → Screen Recording. Note this grant is tied to the
+app's code signature — see the signing note below.
 
 **Kodi opens on the built-in display.** Its stored monitor string went stale
-(the `(n)` changed after a DeskPad restart) and Kodi fell back to `Default`.
-Just run the launcher again; it detects the mismatch and re-converges.
+(the `(n)` changes with every DeskPad restart) and Kodi fell back to `Default`.
+Launch again; it detects the mismatch and re-converges. If Kodi was started
+before DeskPad, quit Kodi first — it only enumerates displays at startup.
 
-**The launcher script moved.** `Kodi on DeskPad.app` references it by absolute
-path; update `Contents/MacOS/launcher` if you relocate the repo.
+**A launch fails.** **Kodi › Last launch failed** carries the reason as its
+tooltip, and `~/Library/Logs/deskpad-dev.log` has it too. "Kodi did not answer
+JSON-RPC" means Kodi › Settings › Services › Control › *Allow remote control
+from applications on this system* is off.
 
 ## Signing note
 

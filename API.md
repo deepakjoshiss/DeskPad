@@ -1,10 +1,13 @@
-# DeskPad capture API
+# DeskPad API
 
-Screenshots and recordings of the DeskPad virtual display, for other apps and
-agents. DeskPad holds the Screen Recording permission, so callers do not need
-their own.
+Screenshots and recordings of the DeskPad virtual display, and launching Kodi
+on it, for other apps and agents. DeskPad holds the Screen Recording
+permission, so callers do not need their own.
 
 The cursor is never in the image, and no audio is recorded.
+
+The socket exists only while DeskPad runs. To start DeskPad and Kodi together
+from nothing, use `open -a "DeskPad Dev" --args --launch-kodi` instead.
 
 ## Connecting
 
@@ -37,7 +40,8 @@ exercises the whole API against the running app.
 
 The first request from an app shows a prompt in DeskPad: **Deny**, **Allow
 Once** or **Always Allow**. A prompt left unanswered for 60 seconds counts as
-Deny. Remove apps under **Capture > Allowed Apps**.
+Deny. Remove apps under **Capture > Allowed Apps**. An allowed app may use the
+whole API - capturing and launching Kodi alike.
 
 The "app" is the first process up the caller's parent chain whose signature is
 not Apple's. For `nc` run by Claude Code, that is Claude Code. For a script
@@ -55,7 +59,8 @@ identified by its hash, so every rebuild is asked again.
 | `screenshot` | `max_width`, `path`, `after_t`, `timeout_ms` | `t`, `w`, `h`, `colorspace`, plus `path` if given |
 | `record_start` | `path`, `max_width`, `max_seconds` | `t`, `path` |
 | `record_stop` | none | `t`, `path`, `duration` (seconds) |
-| `status` | none | `t`, `w`, `h`, `scale`, `colorspace`, `recording`, `recording_path` |
+| `status` | none | `t`, `w`, `h`, `scale`, `colorspace`, `recording`, `recording_path`, `kodi_running`, `kodi_launching` |
+| `kodi_launch` | none | `t`, `monitor` (Kodi's name for the display it ended up on) |
 
 All request fields are optional. Every header has `ok`, `len` and `t`.
 
@@ -85,6 +90,10 @@ All request fields are optional. Every header has `ok`, `len` and `t`.
 - **Movie format**: HEVC in `.mov`, tagged BT.709, at variable frame rate. A
   frame is written only when the screen changes; a still screen holds its last
   frame, and the movie still runs until the moment it was stopped.
+- **`kodi_launch`**: starts Kodi on the DeskPad display, or confirms it is
+  already there, and replies once it is - a few seconds on a cold start, ~20s if
+  Kodi has to be moved from another display. Safe to repeat. See
+  [LAUNCHER.md](LAUNCHER.md) for what it does.
 - **One recording at a time.** Only the app that started a recording can stop
   it. The user can stop any recording from the menu. The menu bar icon is red
   while anything is recording.
@@ -106,5 +115,6 @@ A failure is never an empty or stale image.
 | `capture_failed` | Screen capture is not running (see `message`); DeskPad retries it |
 | `encode_failed` | The frame could not be encoded as PNG |
 | `write_failed` | The file could not be written |
-| `busy` | A recording is already running |
+| `busy` | A recording is already running, or Kodi is already being launched |
+| `kodi_failed` | Kodi could not be put on the DeskPad display (see `message`) |
 | `not_recording` | Nothing to stop. If a recording ended by itself, e.g. because the screens slept, `message` says why and whether what was recorded until then was saved |

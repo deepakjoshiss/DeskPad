@@ -21,7 +21,9 @@
 		6DC044562801878100281728 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6DC044552801878100281728 /* Assets.xcassets */; };
 		6DAA0001290000B8000000B8 /* CaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DAA0001290000A8000000A8 /* CaptureService.swift */; };
 		6DAA0001290000B9000000B9 /* CaptureAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DAA0001290000A9000000A9 /* CaptureAPI.swift */; };
-		6DAA0001290000BA000000BA /* CaptureMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DAA0001290000AA000000AA /* CaptureMenu.swift */; };
+		6DAA0001290000BA000000BA /* AppMenus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DAA0001290000AA000000AA /* AppMenus.swift */; };
+		6DAA0001290000BB000000BB /* KodiLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DAA0001290000AB000000AB /* KodiLauncher.swift */; };
+		6DAA0001290000BC000000BC /* KodiProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DAA0001290000AC000000AC /* KodiProtocol.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,7 +45,9 @@
 		6DC0445A2801878100281728 /* DeskPad.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DeskPad.entitlements; sourceTree = "<group>"; };
 		6DAA0001290000A8000000A8 /* CaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureService.swift; sourceTree = "<group>"; };
 		6DAA0001290000A9000000A9 /* CaptureAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureAPI.swift; sourceTree = "<group>"; };
-		6DAA0001290000AA000000AA /* CaptureMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureMenu.swift; sourceTree = "<group>"; };
+		6DAA0001290000AA000000AA /* AppMenus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMenus.swift; sourceTree = "<group>"; };
+		6DAA0001290000AB000000AB /* KodiLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KodiLauncher.swift; sourceTree = "<group>"; };
+		6DAA0001290000AC000000AC /* KodiProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KodiProtocol.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -64,6 +68,7 @@
 				6D41B09D2879FA87007CEB2F /* MouseLocation */,
 				6DAA0001290000C5000000C5 /* KeyboardInput */,
 				6DAA0001290000C6000000C6 /* Capture */,
+				6DAA0001290000C7000000C7 /* Kodi */,
 			);
 			path = Backend;
 			sourceTree = "<group>";
@@ -72,7 +77,7 @@
 			isa = PBXGroup;
 			children = (
 				6D41B0A22879FB88007CEB2F /* Screen */,
-				6DAA0001290000AA000000AA /* CaptureMenu.swift */,
+				6DAA0001290000AA000000AA /* AppMenus.swift */,
 			);
 			path = Frontend;
 			sourceTree = "<group>";
@@ -152,6 +157,15 @@
 				6DAA0001290000A9000000A9 /* CaptureAPI.swift */,
 			);
 			path = Capture;
+			sourceTree = "<group>";
+		};
+		6DAA0001290000C7000000C7 /* Kodi */ = {
+			isa = PBXGroup;
+			children = (
+				6DAA0001290000AB000000AB /* KodiLauncher.swift */,
+				6DAA0001290000AC000000AC /* KodiProtocol.swift */,
+			);
+			path = Kodi;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -250,9 +264,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6DAA0001290000BB000000BB /* KodiLauncher.swift in Sources */,
+				6DAA0001290000BC000000BC /* KodiProtocol.swift in Sources */,
 				6DAA0001290000B8000000B8 /* CaptureService.swift in Sources */,
 				6DAA0001290000B9000000B9 /* CaptureAPI.swift in Sources */,
-				6DAA0001290000BA000000BA /* CaptureMenu.swift in Sources */,
+				6DAA0001290000BA000000BA /* AppMenus.swift in Sources */,
 				6DAA0001290000B6000000B6 /* main.swift in Sources */,
 				6DAA0001290000B5000000B5 /* AppModel.swift in Sources */,
 				6D68E1B2287ABDB900CD574A /* NSScreen+Extensions.swift in Sources */,

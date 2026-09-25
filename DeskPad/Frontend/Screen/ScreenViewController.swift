@@ -122,6 +122,9 @@ class ScreenView: NSView {
     override func flagsChanged(with _: NSEvent) {}
 }
 
+/// What macOS - and Kodi's monitor list - calls the virtual display.
+let virtualDisplayName = "DeskPad Dev Display"
+
 class ScreenViewController: NSViewController, NSWindowDelegate {
     private let model: AppModel
 
@@ -219,7 +222,7 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
 
         let descriptor = CGVirtualDisplayDescriptor()
         descriptor.setDispatchQueue(DispatchQueue.main)
-        descriptor.name = "DeskPad Dev Display"
+        descriptor.name = virtualDisplayName
         descriptor.maxPixelsWide = 5120
         descriptor.maxPixelsHigh = 2160
         descriptor.sizeInMillimeters = CGSize(width: 1600, height: 1000)

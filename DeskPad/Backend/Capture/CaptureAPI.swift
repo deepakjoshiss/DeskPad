@@ -21,6 +21,7 @@ final class CaptureAPI: @unchecked Sendable {
     }
 
     private let service: CaptureService
+    private let kodi: KodiLauncher
     private let frames: FrameStore
     private let window: NSWindow
     /// One prompt at a time, so a second request from the same app waits for the
@@ -28,8 +29,9 @@ final class CaptureAPI: @unchecked Sendable {
     private let approvalLock = NSLock()
 
     @MainActor
-    init(service: CaptureService, window: NSWindow) {
+    init(service: CaptureService, kodi: KodiLauncher, window: NSWindow) {
         self.service = service
+        self.kodi = kodi
         frames = service.frames
         self.window = window
     }
@@ -193,7 +195,7 @@ final class CaptureAPI: @unchecked Sendable {
         guard let request = try? decoder.decode(Request.self, from: line) else {
             return .failure(.badRequest("the request line is not a JSON object with an \"op\""))
         }
-        guard ["screenshot", "record_start", "record_stop", "status"].contains(request.op) else {
+        guard ["screenshot", "record_start", "record_stop", "status", "kodi_launch"].contains(request.op) else {
             return .failure(.badRequest("unknown op \"\(request.op)\""))
         }
         if let maxWidth = request.maxWidth, maxWidth <= 0 {
@@ -213,7 +215,8 @@ final class CaptureAPI: @unchecked Sendable {
         case "screenshot": return screenshot(request)
         case "record_start": return startRecording(request, owner: identity)
         case "record_stop": return stopRecording(owner: identity)
-        default: return Reply(header: ["ok": true].merging(onMain { self.service.status }) { $1 })
+        case "kodi_launch": return launchKodi()
+        default: return Reply(header: ["ok": true].merging(onMain { self.status }) { $1 })
         }
     }
 
@@ -285,6 +288,23 @@ final class CaptureAPI: @unchecked Sendable {
         case let .success((url, duration)): Reply(header: ["ok": true, "path": url.path, "duration": duration])
         case let .failure(error): .failure(error)
         }
+    }
+
+    /// Blocks until Kodi is up on the display - tens of seconds on a cold start -
+    /// so the reply says where it ended up rather than merely that it was asked.
+    private func launchKodi() -> Reply {
+        switch onMain({ await self.kodi.launch() }) {
+        case let .success(monitor): Reply(header: ["ok": true, "monitor": monitor])
+        case let .failure(error): .failure(error)
+        }
+    }
+
+    @MainActor
+    private var status: [String: Any] {
+        service.status.merging([
+            "kodi_running": KodiLauncher.isKodiRunning,
+            "kodi_launching": kodi.isLaunching,
+        ]) { $1 }
     }
 
     /// Runs main-actor work from a request thread and waits for it. These are
@@ -436,12 +456,13 @@ final class CaptureAPI: @unchecked Sendable {
     @MainActor
     private static func prompt(name: String, path: String, op: String, in window: NSWindow) async -> Approval {
         let alert = NSAlert()
-        alert.messageText = "“\(name)” wants to capture the DeskPad display"
+        alert.messageText = "“\(name)” wants to use DeskPad"
+        let asked = op == "kodi_launch" ? "launch Kodi on the DeskPad display" : op.replacingOccurrences(of: "_", with: " ")
         alert.informativeText = """
         \(path)
 
-        It asked to \(op.replacingOccurrences(of: "_", with: " ")). DeskPad holds the Screen Recording \
-        permission, so allowing this lets the app see and record whatever is on the DeskPad display.
+        It asked to \(asked). Allowing it lets the app use all of DeskPad's API: launching Kodi, and - since \
+        DeskPad holds the Screen Recording permission - seeing and recording whatever is on the DeskPad display.
         """
         alert.addButton(withTitle: "Deny")
         alert.addButton(withTitle: "Allow Once")

@@ -1,33 +1,44 @@
 import Cocoa
 
-/// The Capture menu, shown both from a menu bar icon and in the main menu.
+/// DeskPad's Capture and Kodi menus: each in the main menu, and both together
+/// under the menu bar icon.
 ///
 /// The items are rebuilt each time a menu opens, so their titles always match
-/// the recording state and the allowlist without anything having to keep them
-/// in step.
+/// the recording state, the launch progress and the allowlist without anything
+/// having to keep them in step.
 ///
 /// No key equivalents, deliberately: while the mirror is focused every keystroke
 /// is forwarded to the virtual display, and a menu shortcut would silently take
 /// its combination away from it.
 @MainActor
-final class CaptureMenu: NSObject, NSMenuDelegate {
+final class AppMenus: NSObject, NSMenuDelegate {
+    enum Section {
+        case capture, kodi
+    }
+
+    static let launchKodiAtStartKey = "launchKodiAtStart"
+
     private let service: CaptureService
+    private let kodi: KodiLauncher
     private let window: NSWindow
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    private var sections: [ObjectIdentifier: [Section]] = [:]
 
-    init(service: CaptureService, window: NSWindow) {
+    init(service: CaptureService, kodi: KodiLauncher, window: NSWindow) {
         self.service = service
+        self.kodi = kodi
         self.window = window
         super.init()
-        statusItem.menu = makeMenu()
+        statusItem.menu = makeMenu(.capture, .kodi)
         service.onRecordingChange = { [weak self] in
             self?.updateIcon()
         }
         updateIcon()
     }
 
-    func makeMenu() -> NSMenu {
-        let menu = NSMenu(title: "Capture")
+    func makeMenu(_ sections: Section...) -> NSMenu {
+        let menu = NSMenu(title: sections == [.kodi] ? "Kodi" : "Capture")
+        self.sections[ObjectIdentifier(menu)] = sections
         menu.delegate = self
         // AppKit draws a status item whose menu has nothing enabled as disabled -
         // dim grey, dark on a dark menu bar - so the menu cannot start out empty
@@ -80,6 +91,40 @@ final class CaptureMenu: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        for (index, section) in (sections[ObjectIdentifier(menu)] ?? []).enumerated() {
+            if index > 0 {
+                menu.addItem(.separator())
+            }
+            switch section {
+            case .capture: addCaptureItems(to: menu)
+            case .kodi: addKodiItems(to: menu)
+            }
+        }
+    }
+
+    private func addKodiItems(to menu: NSMenu) {
+        if let progress = kodi.progress {
+            menu.addItem(note(progress))
+        } else if let failure = kodi.lastFailure {
+            let failed = note("Last launch failed")
+            failed.toolTip = failure
+            menu.addItem(failed)
+        }
+        let launch = item("Launch Kodi on DeskPad", #selector(launchKodiFromMenu))
+        launch.isEnabled = !kodi.isLaunching
+        menu.addItem(launch)
+        let atStart = item("Launch Kodi When DeskPad Starts", #selector(toggleLaunchKodiAtStart))
+        atStart.state = UserDefaults.standard.bool(forKey: Self.launchKodiAtStartKey) ? .on : .off
+        menu.addItem(atStart)
+    }
+
+    private func note(_ title: String) -> NSMenuItem {
+        let note = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        note.isEnabled = false
+        return note
+    }
+
+    private func addCaptureItems(to menu: NSMenu) {
         menu.addItem(item("Take Screenshot", #selector(takeScreenshot)))
         menu.addItem(item(service.recording == nil ? "Start Recording" : "Stop Recording", #selector(toggleRecording)))
         menu.addItem(.separator())
@@ -88,9 +133,7 @@ final class CaptureMenu: NSObject, NSMenuDelegate {
         let allowed = NSMenu()
         let apps = AllowedApps.all
         if apps.isEmpty {
-            let none = NSMenuItem(title: "None", action: nil, keyEquivalent: "")
-            none.isEnabled = false
-            allowed.addItem(none)
+            allowed.addItem(note("None"))
         }
         for app in apps {
             let entry = item("Remove \(app.name)…", #selector(removeAllowedApp(_:)))
@@ -101,6 +144,25 @@ final class CaptureMenu: NSObject, NSMenuDelegate {
         let allowedItem = NSMenuItem(title: "Allowed Apps", action: nil, keyEquivalent: "")
         allowedItem.submenu = allowed
         menu.addItem(allowedItem)
+    }
+
+    /// From the menu, the start-up preference and `--launch-kodi` alike. A
+    /// failure is shown; an already-running launch is not news.
+    func launchKodi() {
+        Task {
+            if case let .failure(error) = await kodi.launch(), error.code != "busy" {
+                showError("Kodi could not be launched on DeskPad", error)
+            }
+        }
+    }
+
+    @objc private func launchKodiFromMenu() {
+        launchKodi()
+    }
+
+    @objc private func toggleLaunchKodiAtStart() {
+        let defaults = UserDefaults.standard
+        defaults.set(!defaults.bool(forKey: Self.launchKodiAtStartKey), forKey: Self.launchKodiAtStartKey)
     }
 
     private func item(_ title: String, _ action: Selector) -> NSMenuItem {

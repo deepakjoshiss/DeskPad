@@ -10,7 +10,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = AppModel()
 
     private var captureService: CaptureService?
-    private var captureMenu: CaptureMenu?
+    private var kodiLauncher: KodiLauncher?
+    private var menus: AppMenus?
     private var captureAPI: CaptureAPI?
 
     func applicationDidFinishLaunching(_: Notification) {
@@ -54,17 +55,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let captureService = CaptureService(model: model)
         captureService.start()
-        let captureMenu = CaptureMenu(service: captureService, window: window)
+        let kodiLauncher = KodiLauncher(model: model)
+        let menus = AppMenus(service: captureService, kodi: kodiLauncher, window: window)
         let captureMenuItem = NSMenuItem()
-        captureMenuItem.submenu = captureMenu.makeMenu()
-        mainMenu.items = [mainMenuItem, captureMenuItem]
+        captureMenuItem.submenu = menus.makeMenu(.capture)
+        let kodiMenuItem = NSMenuItem()
+        kodiMenuItem.submenu = menus.makeMenu(.kodi)
+        mainMenu.items = [mainMenuItem, captureMenuItem, kodiMenuItem]
         NSApplication.shared.mainMenu = mainMenu
 
-        let captureAPI = CaptureAPI(service: captureService, window: window)
+        let captureAPI = CaptureAPI(service: captureService, kodi: kodiLauncher, window: window)
         captureAPI.start()
         self.captureService = captureService
-        self.captureMenu = captureMenu
+        self.kodiLauncher = kodiLauncher
+        self.menus = menus
         self.captureAPI = captureAPI
+
+        // `--launch-kodi` so a script or another app can start the whole session
+        // with `open -a "DeskPad Dev" --args --launch-kodi`; a running DeskPad
+        // takes the API's `kodi_launch` instead.
+        if UserDefaults.standard.bool(forKey: AppMenus.launchKodiAtStartKey)
+            || CommandLine.arguments.contains("--launch-kodi")
+        {
+            menus.launchKodi()
+        }
 
         requestEventPostingAccessIfNeeded()
     }
@@ -121,10 +135,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return .terminateCancel
         }
 
-        guard
-            let displayID = model.displayID,
-            let kodi = kodi(on: displayID)
-        else {
+        // Kodi on our display, or - while a session is recorded - anywhere: a
+        // session's Kodi that has strayed elsewhere still has to be gone before
+        // its settings can be put back.
+        let onDisplay = model.displayID.flatMap { kodi(on: $0) }
+        guard let kodi = onDisplay ?? (KodiLauncher.hasSession ? KodiLauncher.runningKodi() : nil) else {
+            KodiLauncher.finishSession()
             return .terminateNow
         }
 
@@ -206,6 +222,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             hasRepliedToTerminate = true
+            // Now that Kodi is gone - it writes its settings on the way down, and
+            // would clobber a restore made any earlier. It checks for itself, so a
+            // Kodi that outlived the timeout is left alone.
+            KodiLauncher.finishSession()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
     }
