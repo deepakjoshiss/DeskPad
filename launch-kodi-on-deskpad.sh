@@ -180,10 +180,21 @@ start_kodi() {
     log "starting Kodi..."
 
     # Before the launch, not after: Kodi reads SSL_CERT_FILE once, at startup.
+    #
+    # SSL_CERT_FILE covers Kodi's own libcurl and the Python stdlib, but NOT
+    # `requests`: script.module.requests pins script.module.certifi's bundle at
+    # import time and ignores SSL_CERT_FILE entirely, so every add-on using it
+    # still fails CERTIFICATE_VERIFY_FAILED behind Netskope. Measured 2026-09-04
+    # with TMDB Helper against api.themoviedb.org - certifi carries 139 roots and
+    # not the Netskope one, our bundle carries 146 and does. requests reads
+    # REQUESTS_CA_BUNDLE first and falls back to CURL_CA_BUNDLE; set both, since
+    # other add-ons reach for the curl name.
     if [ -r "$CA_BUNDLE" ]; then
         launchctl setenv SSL_CERT_FILE "$CA_BUNDLE"
+        launchctl setenv REQUESTS_CA_BUNDLE "$CA_BUNDLE"
+        launchctl setenv CURL_CA_BUNDLE "$CA_BUNDLE"
     else
-        log "WARNING: no CA bundle at $CA_BUNDLE - repository fetches will fail with curl error 60"
+        log "WARNING: no CA bundle at $CA_BUNDLE - repository fetches will fail with curl error 60, and add-ons using requests with CERTIFICATE_VERIFY_FAILED"
     fi
 
     open -a "$KODI_APP" || fail "failed to launch Kodi"
