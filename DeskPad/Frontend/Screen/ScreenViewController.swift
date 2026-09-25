@@ -74,7 +74,16 @@ class ScreenView: NSView {
     @objc private func updateKeyboardIndicator() {
         let isForwarding = window?.isKeyWindow == true && window?.firstResponder === self
         layer?.borderWidth = isForwarding ? 2 : 0
-        layer?.borderColor = NSColor(named: "TitleBarActive")?.cgColor
+        // A CGColor is a snapshot of the named colour in one appearance, so it
+        // is resolved against the view's own and redone when that changes.
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.borderColor = NSColor(named: "TitleBarActive")?.cgColor
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateKeyboardIndicator()
     }
 
     /// A single click takes focus and touches the virtual display not at all. A

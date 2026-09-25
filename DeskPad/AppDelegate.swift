@@ -27,7 +27,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
         window.titleVisibility = .hidden
-        window.backgroundColor = .white
+        // What ScreenViewController shows while the pointer is off the display,
+        // which is also the state it starts out assuming - it only repaints on a
+        // change. A fixed colour here stayed until the pointer first visited the
+        // display: a white frame on a dark-mode desktop. The named colours follow
+        // the system appearance.
+        window.backgroundColor = NSColor(named: "TitleBarInactive")
         window.contentMinSize = CGSize(width: 400, height: 300)
         window.contentMaxSize = CGSize(width: 5120, height: 2160)
         window.styleMask.insert(.resizable)
