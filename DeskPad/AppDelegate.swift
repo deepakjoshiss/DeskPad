@@ -173,12 +173,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     guard let self else {
                         return
                     }
-                    guard delivered else {
-                        // Kodi was not listening, so there is nothing to wait
-                        // for. The launcher's watcher still cleans up after the
-                        // display goes.
-                        self.replyToTerminate()
-                        return
+                    if !delivered {
+                        // Kodi is not answering JSON-RPC - typically because it
+                        // is still starting up, which is exactly when a quit can
+                        // arrive after a launch. Giving up here once left it to
+                        // finish starting on a display that was already gone, and
+                        // it came up fullscreen on the built-in screen, switching
+                        // its resolution. macOS's own quit reaches it anyway.
+                        kodi.terminate()
                     }
                     self.waitForExit(of: kodi)
                 }
