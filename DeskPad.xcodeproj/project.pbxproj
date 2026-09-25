@@ -19,6 +19,9 @@
 		6D68E1B2287ABDB900CD574A /* NSScreen+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D68E1B1287ABDB900CD574A /* NSScreen+Extensions.swift */; };
 		6DC044522801877F00281728 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DC044512801877F00281728 /* AppDelegate.swift */; };
 		6DC044562801878100281728 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6DC044552801878100281728 /* Assets.xcassets */; };
+		6DAA0001290000B8000000B8 /* CaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DAA0001290000A8000000A8 /* CaptureService.swift */; };
+		6DAA0001290000B9000000B9 /* CaptureAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DAA0001290000A9000000A9 /* CaptureAPI.swift */; };
+		6DAA0001290000BA000000BA /* CaptureMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DAA0001290000AA000000AA /* CaptureMenu.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,6 +41,9 @@
 		6DC044512801877F00281728 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		6DC044552801878100281728 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6DC0445A2801878100281728 /* DeskPad.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DeskPad.entitlements; sourceTree = "<group>"; };
+		6DAA0001290000A8000000A8 /* CaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureService.swift; sourceTree = "<group>"; };
+		6DAA0001290000A9000000A9 /* CaptureAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureAPI.swift; sourceTree = "<group>"; };
+		6DAA0001290000AA000000AA /* CaptureMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureMenu.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -57,6 +63,7 @@
 				6DAA0001290000A5000000A5 /* AppModel.swift */,
 				6D41B09D2879FA87007CEB2F /* MouseLocation */,
 				6DAA0001290000C5000000C5 /* KeyboardInput */,
+				6DAA0001290000C6000000C6 /* Capture */,
 			);
 			path = Backend;
 			sourceTree = "<group>";
@@ -65,6 +72,7 @@
 			isa = PBXGroup;
 			children = (
 				6D41B0A22879FB88007CEB2F /* Screen */,
+				6DAA0001290000AA000000AA /* CaptureMenu.swift */,
 			);
 			path = Frontend;
 			sourceTree = "<group>";
@@ -135,6 +143,15 @@
 				6DC0445A2801878100281728 /* DeskPad.entitlements */,
 			);
 			path = DeskPad;
+			sourceTree = "<group>";
+		};
+		6DAA0001290000C6000000C6 /* Capture */ = {
+			isa = PBXGroup;
+			children = (
+				6DAA0001290000A8000000A8 /* CaptureService.swift */,
+				6DAA0001290000A9000000A9 /* CaptureAPI.swift */,
+			);
+			path = Capture;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -233,6 +250,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6DAA0001290000B8000000B8 /* CaptureService.swift in Sources */,
+				6DAA0001290000B9000000B9 /* CaptureAPI.swift in Sources */,
+				6DAA0001290000BA000000BA /* CaptureMenu.swift in Sources */,
 				6DAA0001290000B6000000B6 /* main.swift in Sources */,
 				6DAA0001290000B5000000B5 /* AppModel.swift in Sources */,
 				6D68E1B2287ABDB900CD574A /* NSScreen+Extensions.swift in Sources */,
@@ -301,7 +321,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -357,7 +377,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;

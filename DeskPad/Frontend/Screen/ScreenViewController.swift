@@ -122,60 +122,6 @@ class ScreenView: NSView {
     override func flagsChanged(with _: NSEvent) {}
 }
 
-/// Receives frames from ScreenCaptureKit and hands each one's backing IOSurface
-/// to the mirror.
-///
-/// A separate object because `SCStreamOutput` and `SCStreamDelegate` are
-/// Objective-C protocols whose callbacks arrive off the main thread, which is
-/// exactly what a main-actor view controller should not be conforming to.
-private final class DisplayCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
-    private let onFrame: (IOSurfaceRef) -> Void
-    private let onStop: (SCStream, Error) -> Void
-
-    init(onFrame: @escaping (IOSurfaceRef) -> Void, onStop: @escaping (SCStream, Error) -> Void) {
-        self.onFrame = onFrame
-        self.onStop = onStop
-        super.init()
-    }
-
-    func stream(_: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard
-            type == .screen,
-            isComplete(sampleBuffer),
-            let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer),
-            let surface = CVPixelBufferGetIOSurface(pixelBuffer)?.takeUnretainedValue()
-        else {
-            return
-        }
-        onFrame(surface)
-    }
-
-    /// ScreenCaptureKit keeps delivering frames while the display is unchanged,
-    /// marked `.idle` and carrying no new pixels - CGDisplayStream simply sent
-    /// nothing in that situation. Handing an idle frame to the layer is what
-    /// produces an intermittently black mirror, so only `.complete` is used.
-    private func isComplete(_ sampleBuffer: CMSampleBuffer) -> Bool {
-        guard
-            let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
-            as? [[SCStreamFrameInfo: Any]],
-            let rawStatus = attachments.first?[.status] as? Int
-        else {
-            return false
-        }
-        return SCFrameStatus(rawValue: rawStatus) == .complete
-    }
-
-    /// Reports *which* stream stopped, because a stop is not by itself news: a
-    /// stream this controller already replaced can report its own teardown long
-    /// after something healthy took its place. Only the controller knows which
-    /// stream is the live one, so it decides what the stop means - and does the
-    /// logging, since "capture stopped" and "the user needs to do something about
-    /// it" turned out to be very different events.
-    func stream(_ stream: SCStream, didStopWithError error: Error) {
-        onStop(stream, error)
-    }
-}
-
 class ScreenViewController: NSViewController, NSWindowDelegate {
     private let model: AppModel
 
@@ -459,7 +405,7 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
         guard !Task.isCancelled, let displayID = display?.displayID else {
             return
         }
-        guard let shareableDisplay = await shareableDisplay(matching: displayID) else {
+        guard let capturedDisplay = await shareableDisplay(matching: displayID) else {
             logDiagnostic("the virtual display never appeared in ScreenCaptureKit's "
                 + "inventory; the mirror will stay blank.")
             presentCaptureError("The virtual display did not appear in ScreenCaptureKit's inventory.")
@@ -469,7 +415,10 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
             return
         }
 
-        let output = DisplayCaptureOutput { [weak self] surface in
+        let output = DisplayCaptureOutput { [weak self] pixelBuffer, _ in
+            guard let surface = CVPixelBufferGetIOSurface(pixelBuffer)?.takeUnretainedValue() else {
+                return
+            }
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     guard let self else {
@@ -490,8 +439,13 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
             }
         }
         let stream = SCStream(
-            filter: SCContentFilter(display: shareableDisplay, excludingWindows: []),
-            configuration: configuration(pixelWidth: pixelWidth, pixelHeight: pixelHeight, displayID: displayID),
+            filter: SCContentFilter(display: capturedDisplay, excludingWindows: []),
+            configuration: displayStreamConfiguration(
+                pixelWidth: pixelWidth,
+                pixelHeight: pixelHeight,
+                displayID: displayID,
+                showsCursor: true
+            ),
             delegate: output
         )
         do {
@@ -576,58 +530,6 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
 
     private func presentCaptureError(_ message: String) {
         errorOverlay.present(message: message)
-    }
-
-    private func configuration(
-        pixelWidth: Int,
-        pixelHeight: Int,
-        displayID: CGDirectDisplayID
-    ) -> SCStreamConfiguration {
-        let configuration = SCStreamConfiguration()
-        configuration.width = pixelWidth
-        configuration.height = pixelHeight
-        configuration.pixelFormat = kCVPixelFormatType_32BGRA
-        configuration.showsCursor = true
-        // The size above is already the display's exact pixel size, so there is
-        // nothing to fit; letterboxing here would only ever add error.
-        configuration.scalesToFit = false
-        configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
-        // Asking for frames in the display's own colour space is what the old
-        // CGDisplayStream path got by default (`kCGDisplayStreamColorSpace`
-        // "defaults to display color space"), and it is the reason the mirror
-        // needs no conversion on the way to the layer. Do not substitute a fixed
-        // sRGB here: on a display assigned any other profile that reintroduces
-        // exactly the washed-out picture this replaced.
-        configuration.colorSpaceName = CGDisplayCopyColorSpace(displayID).name ?? CGColorSpace.sRGB
-        return configuration
-    }
-
-    /// The virtual display does not show up in ScreenCaptureKit's inventory the
-    /// instant it is created, so poll briefly instead of giving up on the first
-    /// miss - the same reason `applyPreferredMode` retries.
-    private func shareableDisplay(matching displayID: CGDirectDisplayID) async -> SCDisplay? {
-        for attempt in 0 ..< 20 {
-            if attempt > 0 {
-                try? await Task.sleep(nanoseconds: 250_000_000)
-            }
-            guard !Task.isCancelled else {
-                return nil
-            }
-            do {
-                let content = try await SCShareableContent.excludingDesktopWindows(
-                    false,
-                    onScreenWindowsOnly: false
-                )
-                if let match = content.displays.first(where: { $0.displayID == displayID }) {
-                    return match
-                }
-            } catch {
-                logDiagnostic("cannot list shareable content: \(error). DeskPad most likely "
-                    + "lacks Screen Recording permission in System Settings > Privacy & Security.")
-                return nil
-            }
-        }
-        return nil
     }
 
     func windowWillResize(_ window: NSWindow, to frameSize: NSSize) -> NSSize {

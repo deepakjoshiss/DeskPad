@@ -9,6 +9,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// than reached for globally.
     private let model = AppModel()
 
+    private var captureService: CaptureService?
+    private var captureMenu: CaptureMenu?
+    private var captureAPI: CaptureAPI?
+
     func applicationDidFinishLaunching(_: Notification) {
         // Before the view controller, which creates the virtual display: the
         // model has to be watching for screen parameter changes already, or the
@@ -47,8 +51,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         subMenu.addItem(quitMenuItem)
         mainMenuItem.submenu = subMenu
-        mainMenu.items = [mainMenuItem]
+
+        let captureService = CaptureService(model: model)
+        captureService.start()
+        let captureMenu = CaptureMenu(service: captureService, window: window)
+        let captureMenuItem = NSMenuItem()
+        captureMenuItem.submenu = captureMenu.makeMenu()
+        mainMenu.items = [mainMenuItem, captureMenuItem]
         NSApplication.shared.mainMenu = mainMenu
+
+        let captureAPI = CaptureAPI(service: captureService, window: window)
+        captureAPI.start()
+        self.captureService = captureService
+        self.captureMenu = captureMenu
+        self.captureAPI = captureAPI
 
         requestEventPostingAccessIfNeeded()
     }
@@ -85,6 +101,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// run loop keeps turning, so the mirror carries on rendering and the window
     /// does not beachball while Kodi shuts down.
     func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
+        // A movie is only playable once its recording is finalised, so quitting
+        // mid-recording would leave a broken file. Finish it, then quit again.
+        if let captureService, captureService.recording != nil {
+            Task {
+                _ = await captureService.stopRecording(by: nil)
+                // Not straight from this task. `terminate` spins a nested event
+                // loop until the Kodi shutdown below replies, and that reply
+                // arrives as main-queue work - which cannot run while this task,
+                // itself main-queue work, is still on the queue. Calling it here
+                // deadlocked quitting outright. A run loop block is not
+                // main-queue work, so the reply gets through.
+                RunLoop.main.perform {
+                    MainActor.assumeIsolated {
+                        NSApp.terminate(nil)
+                    }
+                }
+            }
+            return .terminateCancel
+        }
+
         guard
             let displayID = model.displayID,
             let kodi = kodi(on: displayID)
