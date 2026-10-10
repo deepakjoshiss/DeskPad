@@ -1,6 +1,6 @@
 import Cocoa
 
-/// DeskPad's Capture and Kodi menus: each in the main menu, and both together
+/// VinDesk's Capture and Kodi menus: each in the main menu, and both together
 /// under the menu bar icon.
 ///
 /// The items are rebuilt each time a menu opens, so their titles always match
@@ -61,14 +61,14 @@ final class AppMenus: NSObject, NSMenuDelegate {
 
         guard let session = service.recording else {
             // A template image, so macOS colours it for light and dark menu bars.
-            button.image = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "DeskPad capture")
+            button.image = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "VinDesk capture")
             button.title = ""
             statusItem.length = NSStatusItem.squareLength
             return
         }
         // Deliberately not a template: a template is recoloured to match the menu
         // bar, which would throw the red away.
-        button.image = NSImage(systemSymbolName: "record.circle.fill", accessibilityDescription: "DeskPad is recording")?
+        button.image = NSImage(systemSymbolName: "record.circle.fill", accessibilityDescription: "VinDesk is recording")?
             .withSymbolConfiguration(.init(paletteColors: [.white, .systemRed]))
         button.imagePosition = .imageLeading
         // Monospaced digits, so the item does not shuffle its neighbours every
@@ -110,10 +110,10 @@ final class AppMenus: NSObject, NSMenuDelegate {
             failed.toolTip = failure
             menu.addItem(failed)
         }
-        let launch = item("Launch Kodi on DeskPad", #selector(launchKodiFromMenu))
+        let launch = item("Launch Kodi on VinDesk", #selector(launchKodiFromMenu))
         launch.isEnabled = !kodi.isLaunching
         menu.addItem(launch)
-        let atStart = item("Launch Kodi When DeskPad Starts", #selector(toggleLaunchKodiAtStart))
+        let atStart = item("Launch Kodi When VinDesk Starts", #selector(toggleLaunchKodiAtStart))
         atStart.state = UserDefaults.standard.bool(forKey: Self.launchKodiAtStartKey) ? .on : .off
         menu.addItem(atStart)
     }
@@ -151,7 +151,7 @@ final class AppMenus: NSObject, NSMenuDelegate {
     func launchKodi() {
         Task {
             if case let .failure(error) = await kodi.launch(), error.code != "busy" {
-                showError("Kodi could not be launched on DeskPad", error)
+                showError("Kodi could not be launched on VinDesk", error)
             }
         }
     }
@@ -253,7 +253,7 @@ final class AppMenus: NSObject, NSMenuDelegate {
             return
         }
         let alert = NSAlert()
-        alert.messageText = "Stop allowing this app to capture the DeskPad display?"
+        alert.messageText = "Stop allowing this app to capture the VinDesk display?"
         alert.informativeText = "It will be asked again the next time it tries.\n\n\(requirement)"
         alert.addButton(withTitle: "Remove")
         alert.addButton(withTitle: "Cancel")

@@ -1,31 +1,31 @@
-# DeskPad API
+# VinDesk API
 
-Screenshots and recordings of the DeskPad virtual display, and launching Kodi
-on it, for other apps and agents. DeskPad holds the Screen Recording
+Screenshots and recordings of the VinDesk virtual display, and launching Kodi
+on it, for other apps and agents. VinDesk holds the Screen Recording
 permission, so callers do not need their own.
 
 The cursor is never in the image, and no audio is recorded. Neither are macOS's
 purple recording indicators (the corner dot and the menu-bar pill), which
-DeskPad's own capture causes; the real displays still show them.
+VinDesk's own capture causes; the real displays still show them.
 
-The socket exists only while DeskPad runs. To start DeskPad and Kodi together
-from nothing, use `open -a "DeskPad Dev" --args --launch-kodi` instead.
+The socket exists only while VinDesk runs. To start VinDesk and Kodi together
+from nothing, use `open -a "VinDesk" --args --launch-kodi` instead.
 
 ## Connecting
 
 A Unix socket, readable only by your user:
 
-    ~/Library/Application Support/DeskPad Dev/api.sock
+    ~/Library/Application Support/VinDesk/api.sock
 
 Each connection carries **one request**:
 
 1. The client sends one JSON object followed by `\n`.
-2. DeskPad replies with one JSON header line followed by `\n`, then exactly
+2. VinDesk replies with one JSON header line followed by `\n`, then exactly
    `len` bytes (`len` is 0 unless PNG bytes follow).
-3. DeskPad closes the connection.
+3. VinDesk closes the connection.
 
 ```sh
-SOCK="$HOME/Library/Application Support/DeskPad Dev/api.sock"
+SOCK="$HOME/Library/Application Support/VinDesk/api.sock"
 
 # Write to a file: the reply is the header line only.
 printf '{"op":"screenshot","path":"/tmp/shot.png"}\n' | nc -U "$SOCK"
@@ -40,7 +40,7 @@ exercises the whole API against the running app.
 
 ## Who may call
 
-The first request from an app shows a prompt in DeskPad: **Deny**, **Allow
+The first request from an app shows a prompt in VinDesk: **Deny**, **Allow
 Once** or **Always Allow**. A prompt left unanswered for 60 seconds counts as
 Deny. Remove apps under **Capture > Allowed Apps**. An allowed app may use the
 whole API - capturing and launching Kodi alike.
@@ -82,17 +82,17 @@ All request fields are optional. Every header has `ok`, `len` and `t`.
   reports `scale` (2 on a HiDPI mode).
 - **`colorspace`**: the colour space the PNG is tagged with (embedded as its
   ICC profile). Pixels are never converted to sRGB.
-- **`path`**: where DeskPad writes the file. It must be absolute, end in `.png`
+- **`path`**: where VinDesk writes the file. It must be absolute, end in `.png`
   (screenshots) or `.mov` (recordings), have an existing parent folder, and not
-  exist yet. DeskPad never overwrites and never follows a symlink. Without
+  exist yet. VinDesk never overwrites and never follows a symlink. Without
   `path`, a screenshot's PNG comes back in the reply, and a recording goes to
-  `~/Pictures/DeskPad/`.
+  `~/Pictures/VinDesk/`.
 - **`max_seconds`**: recordings stop by themselves after this long (default
   600, max 3600).
 - **Movie format**: HEVC in `.mov`, tagged BT.709, at variable frame rate. A
   frame is written only when the screen changes; a still screen holds its last
   frame, and the movie still runs until the moment it was stopped.
-- **`kodi_launch`**: starts Kodi on the DeskPad display, or confirms it is
+- **`kodi_launch`**: starts Kodi on the VinDesk display, or confirms it is
   already there, and replies once it is - a few seconds on a cold start, ~20s if
   Kodi has to be moved from another display. Safe to repeat. See
   [LAUNCHER.md](LAUNCHER.md) for what it does.
@@ -114,9 +114,9 @@ A failure is never an empty or stale image.
 | `no_frame_yet` | No frame has arrived yet, e.g. just after launch or a resolution change |
 | `timeout` | No frame newer than `after_t` arrived in time; `t` is the latest one |
 | `display_off` | The screens are asleep |
-| `capture_failed` | Screen capture is not running (see `message`); DeskPad retries it |
+| `capture_failed` | Screen capture is not running (see `message`); VinDesk retries it |
 | `encode_failed` | The frame could not be encoded as PNG |
 | `write_failed` | The file could not be written |
 | `busy` | A recording is already running, or Kodi is already being launched |
-| `kodi_failed` | Kodi could not be put on the DeskPad display (see `message`) |
+| `kodi_failed` | Kodi could not be put on the VinDesk display (see `message`) |
 | `not_recording` | Nothing to stop. If a recording ended by itself, e.g. because the screens slept, `message` says why and whether what was recorded until then was saved |

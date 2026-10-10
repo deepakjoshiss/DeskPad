@@ -18,7 +18,7 @@ overrides, and do not "fix" signing errors by reaching for an org identity or a
 
 Why it must be a real certificate and not ad-hoc: TCC pins an ad-hoc app's
 Screen Recording grant to its *binary hash*, so every rebuild silently revoked
-permission and DeskPad's window went blank. A certificate-based signature gives
+permission and VinDesk's window went blank. A certificate-based signature gives
 a stable designated requirement, so the grant survives rebuilds. See the signing
 section of `LAUNCHER.md`.
 
@@ -47,13 +47,17 @@ input. It is a local build and is not distributed.
 
     xcodebuild -project DeskPad.xcodeproj -scheme DeskPad -configuration Release build
 
-The product is `DeskPad Dev.app`, which is deployed by copying it to the repo
+The product is `VinDesk.app`, which is deployed by copying it to the repo
 root. It is a build artifact and is gitignored — do not commit it.
 
 The dev build intentionally differs from the upstream release build:
 
+* named **VinDesk** (renamed from "DeskPad Dev" on 2026-10-10). The bundle id,
+  Xcode project, target, scheme and source folder deliberately keep the DeskPad
+  name: a new bundle id resets the Screen Recording and Accessibility grants
+  and every saved setting, and the rest only makes upstream merges harder
 * bundle id `com.jellyvin.deskpad` (not `com.stengo.DeskPad`) so both can run
-* display name `DeskPad Dev Display`
+* display name `VinDesk Display`
 * `serialNum = 0x0002` so its virtual display can coexist with a release
   DeskPad's (`0x0001`) — macOS refuses two virtual displays sharing a
   vendor/product/serial identity

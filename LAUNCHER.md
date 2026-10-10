@@ -1,24 +1,24 @@
-# Kodi on DeskPad — launching Kodi
+# Kodi on VinDesk — launching Kodi
 
-DeskPad starts Kodi on its own virtual display. Any of these does it:
+VinDesk starts Kodi on its own virtual display. Any of these does it:
 
 | From | How |
 |---|---|
-| The menu | **Kodi › Launch Kodi on DeskPad**, in the main menu or under the menu bar icon |
-| DeskPad starting | **Kodi › Launch Kodi When DeskPad Starts** — opening DeskPad is then the one click |
-| A script or app, DeskPad not running | `open -a "DeskPad Dev" --args --launch-kodi` |
-| A script or app, DeskPad running | `{"op":"kodi_launch"}` on the API socket — see [API.md](API.md) |
+| The menu | **Kodi › Launch Kodi on VinDesk**, in the main menu or under the menu bar icon |
+| VinDesk starting | **Kodi › Launch Kodi When VinDesk Starts** — opening VinDesk is then the one click |
+| A script or app, VinDesk not running | `open -a "VinDesk" --args --launch-kodi` |
+| A script or app, VinDesk running | `{"op":"kodi_launch"}` on the API socket — see [API.md](API.md) |
 
 All of them run the same code, `DeskPad/Backend/Kodi/KodiLauncher.swift`, one
 launch at a time. Launching again while Kodi is already on the display is
 harmless and returns straight away.
 
-DeskPad is deliberately **left running when Kodi quits**. The reverse is linked:
-**quitting DeskPad quits Kodi first**, then puts Kodi's display settings back —
+VinDesk is deliberately **left running when Kodi quits**. The reverse is linked:
+**quitting VinDesk quits Kodi first**, then puts Kodi's display settings back —
 see "Teardown" below.
 
 This replaced a bash launcher (`launch-kodi-on-deskpad.sh`, a double-clickable
-`Kodi on DeskPad.app`, and three Python helpers), removed on 2026-09-25. DeskPad
+`Kodi on DeskPad.app`, and three Python helpers), removed on 2026-09-25. VinDesk
 knows things the script had to guess or poll for — when the display exists,
 whether it is quitting or the screens merely slept — and can refuse a second
 launch that would otherwise race the first.
@@ -31,14 +31,14 @@ launch that would otherwise race the first.
 | `DeskPad/Backend/Kodi/KodiProtocol.swift` | `guisettings.xml` editing, and request/reply JSON-RPC over Kodi's raw TCP socket (port 9090) |
 | `tools/kodi_protocol_check.swift` | Self-check for the above; no Kodi needed |
 | `tools/kodi_rpc.py` | JSON-RPC from a terminal, for poking at Kodi by hand |
-| `~/Library/Logs/deskpad-dev.log` | Where a launch reports what went wrong (and where Kodi ended up) |
-| `~/Library/Application Support/kodi-on-deskpad/pre-session-settings` | Kodi's display settings as they were before this session, awaiting restore |
+| `~/Library/Logs/vindesk.log` | Where a launch reports what went wrong (and where Kodi ended up) |
+| `~/Library/Application Support/VinDesk/pre-session-settings` | Kodi's display settings as they were before this session, awaiting restore |
 
 ## What it does
 
 1. Records Kodi's display settings, before anything is patched.
 2. Waits for the virtual display to be registered with macOS — normally already
-   the case, since it is DeskPad's own.
+   the case, since it is VinDesk's own.
 3. If Kodi isn't running, *predicts* the monitor string and writes it to
    `guisettings.xml` before launching, so Kodi initialises on the right display
    in one go (see "The prediction" below).
@@ -78,19 +78,19 @@ prediction lets us patch *before* Kodi's first launch.
 
 ## Teardown
 
-Quitting DeskPad ends the whole session: Kodi is quit and its display settings
+Quitting VinDesk ends the whole session: Kodi is quit and its display settings
 are put back the way they were.
 
-    Cmd-Q DeskPad
-      → DeskPad asks Kodi to quit and holds its own termination open
+    Cmd-Q VinDesk
+      → VinDesk asks Kodi to quit and holds its own termination open
       → Kodi exits (~2s) while the virtual display is still there
-      → DeskPad restores guisettings.xml
-      → DeskPad finishes quitting; the display goes
+      → VinDesk restores guisettings.xml
+      → VinDesk finishes quitting; the display goes
 
 **Kodi must be gone before the display is.** The virtual display exists only as
-long as DeskPad's process does, so a Kodi still running when DeskPad exits is
+long as VinDesk's process does, so a Kodi still running when VinDesk exits is
 instantly homeless: macOS moves it to the built-in display, where it reappears
-*fullscreen across the user's actual screen* until it finishes quitting. DeskPad
+*fullscreen across the user's actual screen* until it finishes quitting. VinDesk
 uses `.terminateLater` rather than blocking in `applicationWillTerminate`, so the
 run loop keeps turning and the mirror carries on rendering while Kodi shuts down.
 Measured: Kodi exits 1.9s after Cmd-Q and 0.4s before the display, and never
@@ -100,10 +100,10 @@ appears on the built-in display at all (0 of ~300 samples at 100ms).
 settings out on the way down and would clobber an earlier one. It checks for a
 running Kodi itself, so a Kodi that outlives the quit timeout is left alone.
 
-This used to be a watcher script that outlived DeskPad and restored the settings
+This used to be a watcher script that outlived VinDesk and restored the settings
 when the display disappeared. It had to guess whether a vanished display meant
-DeskPad had quit or the screens had merely slept — and guessed wrong once
-(2026-09-06), tearing down a live session. DeskPad knows which it is.
+VinDesk had quit or the screens had merely slept — and guessed wrong once
+(2026-09-06), tearing down a live session. VinDesk knows which it is.
 
 While a session is recorded, a Kodi that has strayed off our display is quit too,
 since its settings cannot be restored while it runs.
@@ -123,10 +123,10 @@ away every other setting touched during the session.
 once, before anything is patched, and kept in a file so a session that ends
 without restoring does not cost the real values. If the record is absent *and*
 the file already names our own display, the capture falls back to `Default`:
-restoring the DeskPad display would strand Kodi on a display that no longer
+restoring the VinDesk display would strand Kodi on a display that no longer
 exists.
 
-**A missed restore is not fatal.** Kill DeskPad, or log out with a session live,
+**A missed restore is not fatal.** Kill VinDesk, or log out with a session live,
 and the settings stay patched; Kodi then finds a display that isn't there and
 falls back to `Default` on its own, and the next launch re-converges.
 
@@ -149,7 +149,7 @@ launcher only ever changes it with Kodi stopped, so Kodi initialises directly on
 the target display.
 
 **`default="true"` makes Kodi ignore a setting's stored value.** A setting
-written as `<setting id="videoscreen.monitor" default="true">DeskPad Dev Display
+written as `<setting id="videoscreen.monitor" default="true">VinDesk Display
 (46)</setting>` is treated as "use the built-in default" — Kodi loads `Default`
 and quietly ignores the text. `GuiSettings` strips the attribute; that single
 detail is the difference between working and silently doing nothing.
@@ -176,7 +176,7 @@ watcher off for 40s once, and fired the instant the unrelated loop exited.
 **The virtual display needs a moment, and Kodi enumerates displays only at
 startup.** Launch Kodi too early and it lands on the built-in screen with no
 error. The launcher waits for the display first — and a Kodi started before
-DeskPad can never see the display at all, however often the launch is retried,
+VinDesk can never see the display at all, however often the launch is retried,
 until Kodi itself is restarted.
 
 ## Input on the mirror
@@ -186,7 +186,7 @@ gestures:
 
 | Gesture | Effect |
 |---|---|
-| **Single click** | Focuses DeskPad and starts forwarding keystrokes. Touches the virtual display not at all. |
+| **Single click** | Focuses VinDesk and starts forwarding keystrokes. Touches the virtual display not at all. |
 | **Double click** | Hands the **pointer** over: the cursor jumps to that spot on the virtual display and stays there. Clicks nothing. |
 | Right click | Forwards a right click immediately |
 | Scroll | Forwarded immediately |
@@ -201,29 +201,29 @@ approximations of one, and there is nothing left to forward. (A synthetic click
 was forwarded here at one point; it was strictly more machinery for a worse
 result.)
 
-It does **activate the mirrored app**, though. Clicking the mirror makes DeskPad
+It does **activate the mirrored app**, though. Clicking the mirror makes VinDesk
 active and leaves the mirrored app inactive, so without this the first real click
 after the pointer arrives is spent activating it — the exact cost the gesture
 exists to avoid. The trade is that **keyboard forwarding stops** at that moment,
-because DeskPad is no longer frontmost. Nothing is lost: keystrokes now reach the
+because VinDesk is no longer frontmost. Nothing is lost: keystrokes now reach the
 mirrored app natively, and a single click on the mirror takes the keyboard back.
 
 While keystrokes are being forwarded the mirror draws a **border** in the
 titlebar-active colour. Forwarding keys is otherwise invisible, and so is *not*
 forwarding them.
 
-Keyboard forwarding is live whenever DeskPad's window is focused and the mirror
-holds first responder — which it takes at launch, so tabbing back to DeskPad
-works as well as clicking it. `Cmd`-anything is left to DeskPad (menu key
+Keyboard forwarding is live whenever VinDesk's window is focused and the mirror
+holds first responder — which it takes at launch, so tabbing back to VinDesk
+works as well as clicking it. `Cmd`-anything is left to VinDesk (menu key
 equivalents never reach the view), so `Cmd-Q` still quits.
 
 ### Two different mechanisms, because keyboards are not mice
 
 Mouse events are routed **by location** — post one at a point and it lands on
 whatever window is there, focus irrelevant. Key events are routed **by focus**,
-and the whole point here is to type while DeskPad rather than Kodi holds focus,
+and the whole point here is to type while VinDesk rather than Kodi holds focus,
 so there is nowhere for an ordinary posted key event to land. It would come
-straight back to DeskPad.
+straight back to VinDesk.
 
 **Kodi therefore gets keys over JSON-RPC**, not as synthetic events:
 `Input.ButtonEvent` with keymap `KB`. This sidesteps focus entirely (verified
@@ -257,7 +257,7 @@ Only the right click still synthesises a click — the pointer path just warps t
 cursor, as upstream did. The notes below therefore apply to right click, and to
 the `.mouseMoved` event that accompanies every warp.
 
-This needs **two** permissions, and DeskPad must be **unsandboxed**:
+This needs **two** permissions, and VinDesk must be **unsandboxed**:
 
 | Requirement | Why |
 |---|---|
@@ -265,8 +265,8 @@ This needs **two** permissions, and DeskPad must be **unsandboxed**:
 | Accessibility | `System Settings > Privacy & Security > Accessibility` |
 | No App Sandbox | the sandbox blocks event injection outright, even with Accessibility granted |
 
-If clicks move the cursor but never click, permission is missing — DeskPad writes
-the reason to `~/Library/Logs/deskpad-dev.log` (and only then; the file staying
+If clicks move the cursor but never click, permission is missing — VinDesk writes
+the reason to `~/Library/Logs/vindesk.log` (and only then; the file staying
 absent means it's healthy).
 
 ### Four traps, all of which look like "clicks silently do nothing"
@@ -291,18 +291,18 @@ window onto the display it is mirroring, where it appears to vanish into a
 recursive mirror. `ScreenView.mouseDownCanMoveWindow` returns false to prevent
 it. The titlebar still moves the window.
 
-Also note `acceptsFirstMouse` is true, so the click that re-activates DeskPad is
+Also note `acceptsFirstMouse` is true, so the click that re-activates VinDesk is
 delivered rather than swallowed — which is what lets a double click hand the
-pointer over while DeskPad is inactive.
+pointer over while VinDesk is inactive.
 
 Both the pointer handover and a forwarded right click **activate the mirrored
-app**, which takes focus away from DeskPad and stops keyboard forwarding — after
+app**, which takes focus away from VinDesk and stops keyboard forwarding — after
 which keystrokes reach that app natively anyway. A single click on the mirror
 brings the keyboard back.
 
 ## Display identity
 
-DeskPad's virtual display is identified by a **stable UUID**
+VinDesk's virtual display is identified by a **stable UUID**
 `D85CA43F-3D1D-4440-84C7-79DF61769218`, derived from the
 vendor/product/serial triple hardcoded in
 `DeskPad/Frontend/Screen/ScreenViewController.swift`. The `CGDirectDisplayID` by
@@ -327,17 +327,17 @@ Kodi is found by bundle id (`org.xbmc.kodi`), so it can live anywhere.
 
 ## Troubleshooting
 
-**DeskPad's window is blank.** DeskPad needs Screen Recording permission: System
+**VinDesk's window is blank.** VinDesk needs Screen Recording permission: System
 Settings → Privacy & Security → Screen Recording. Note this grant is tied to the
 app's code signature — see the signing note below.
 
 **Kodi opens on the built-in display.** Its stored monitor string went stale
-(the `(n)` changes with every DeskPad restart) and Kodi fell back to `Default`.
+(the `(n)` changes with every VinDesk restart) and Kodi fell back to `Default`.
 Launch again; it detects the mismatch and re-converges. If Kodi was started
-before DeskPad, quit Kodi first — it only enumerates displays at startup.
+before VinDesk, quit Kodi first — it only enumerates displays at startup.
 
 **A launch fails.** **Kodi › Last launch failed** carries the reason as its
-tooltip, and `~/Library/Logs/deskpad-dev.log` has it too. "Kodi did not answer
+tooltip, and `~/Library/Logs/vindesk.log` has it too. "Kodi did not answer
 JSON-RPC" means Kodi › Settings › Services › Control › *Allow remote control
 from applications on this system* is off.
 

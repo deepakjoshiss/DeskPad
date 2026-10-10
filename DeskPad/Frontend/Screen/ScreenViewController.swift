@@ -7,7 +7,7 @@ import ScreenCaptureKit
 /// controller can forward it to whatever app is on the virtual display.
 ///
 /// The two kinds of input are deliberately on different gestures. A *single*
-/// click is DeskPad's own: it focuses the mirror and starts forwarding
+/// click is VinDesk's own: it focuses the mirror and starts forwarding
 /// keystrokes, without touching the virtual display - so the mirror can be used
 /// as a keyboard remote without the pointer being taken away. A *double* click
 /// hands the pointer over instead.
@@ -17,16 +17,16 @@ class ScreenView: NSView {
     var onScroll: ((NSPoint, CGFloat, CGFloat) -> Void)?
     var onKey: ((UInt16, String?, NSEvent.ModifierFlags) -> Void)?
 
-    /// Deliver the click that also activates DeskPad, rather than swallowing it,
+    /// Deliver the click that also activates VinDesk, rather than swallowing it,
     /// so the double click that hands the pointer over is not eaten by window
-    /// activation when DeskPad is inactive.
+    /// activation when VinDesk is inactive.
     override func acceptsFirstMouse(for _: NSEvent?) -> Bool {
         true
     }
 
     /// The window is movable by its background, so AppKit would start a window
     /// drag on mouse-down here. Forwarding a click warps the cursor onto the
-    /// virtual display, and the dragged window follows it - landing DeskPad's
+    /// virtual display, and the dragged window follows it - landing VinDesk's
     /// own window on the display it is mirroring, where it appears to vanish.
     /// The titlebar still moves the window.
     override var mouseDownCanMoveWindow: Bool {
@@ -132,7 +132,7 @@ class ScreenView: NSView {
 }
 
 /// What macOS - and Kodi's monitor list - calls the virtual display.
-let virtualDisplayName = "DeskPad Dev Display"
+let virtualDisplayName = "VinDesk Display"
 
 class ScreenViewController: NSViewController, NSWindowDelegate {
     private let model: AppModel
@@ -466,9 +466,9 @@ class ScreenViewController: NSViewController, NSWindowDelegate {
             try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: captureQueue)
             try await stream.startCapture()
         } catch {
-            logDiagnostic("could not start screen capture: \(error). Check that DeskPad "
+            logDiagnostic("could not start screen capture: \(error). Check that VinDesk "
                 + "still holds Screen Recording permission in System Settings > Privacy & Security.")
-            presentCaptureError("\(error.localizedDescription). Check that DeskPad still holds "
+            presentCaptureError("\(error.localizedDescription). Check that VinDesk still holds "
                 + "Screen Recording permission in System Settings > Privacy & Security.")
             return
         }

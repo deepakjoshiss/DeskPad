@@ -82,7 +82,7 @@ private let kodiButtonNamesByKeyCode: [UInt16: String] = [
 /// not Kodi.
 ///
 /// `postToPid` rather than `CGEvent.post`, because a posted key event otherwise
-/// goes to the frontmost app - which is DeskPad, so it would come straight back
+/// goes to the frontmost app - which is VinDesk, so it would come straight back
 /// to us. Addressing the process instead is the only way to type into an app that
 /// does not hold focus.
 ///

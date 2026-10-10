@@ -18,10 +18,10 @@ let settings = """
 """
 
 /// A default="true" setting must lose the attribute, or Kodi ignores the value.
-let patched = GuiSettings.patched(settings, "videoscreen.monitor", to: "DeskPad Dev Display (46)")!
-assert(patched.contains(#"    <setting id="videoscreen.monitor">DeskPad Dev Display (46)</setting>"#), patched)
+let patched = GuiSettings.patched(settings, "videoscreen.monitor", to: "VinDesk Display (46)")!
+assert(patched.contains(#"    <setting id="videoscreen.monitor">VinDesk Display (46)</setting>"#), patched)
 assert(!patched.contains(#"default="true""#))
-assert(GuiSettings.read(patched, "videoscreen.monitor") == "DeskPad Dev Display (46)")
+assert(GuiSettings.read(patched, "videoscreen.monitor") == "VinDesk Display (46)")
 
 /// Self-closing form, escaping round-trip, missing ids, and a no-op stays a no-op.
 let closed = GuiSettings.patched(settings, "videoscreen.blankdisplays", to: "a<b&c")!

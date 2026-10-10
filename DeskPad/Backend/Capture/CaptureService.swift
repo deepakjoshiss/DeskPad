@@ -85,9 +85,9 @@ func displayStreamConfiguration(
 
 /// What every capture of the virtual display records: the whole display, minus
 /// macOS's recording indicators - the purple dot it draws in the corner of each
-/// display, and the purple pill in the menu bar - which DeskPad's own capture
+/// display, and the purple pill in the menu bar - which VinDesk's own capture
 /// causes, so they would otherwise sit in the mirror, every screenshot and every
-/// recording. They are only left out of DeskPad's copy; the real displays still
+/// recording. They are only left out of VinDesk's copy; the real displays still
 /// show them.
 ///
 /// The virtual display does not show up in ScreenCaptureKit's inventory the
@@ -118,7 +118,7 @@ func captureFilter(
                 )
             }
         } catch {
-            logDiagnostic("cannot list shareable content: \(error). DeskPad most likely "
+            logDiagnostic("cannot list shareable content: \(error). VinDesk most likely "
                 + "lacks Screen Recording permission in System Settings > Privacy & Security.")
             return nil
         }
@@ -138,7 +138,7 @@ private func isRecordingIndicator(_ window: SCWindow) -> Bool {
 }
 
 /// Keeps a stream's filter current. macOS recreates the indicator windows, with
-/// new ids, whenever anything starts or stops capturing - DeskPad's own streams
+/// new ids, whenever anything starts or stops capturing - VinDesk's own streams
 /// included, whose indicator only appears once they are running, hence the
 /// early first check. The filter is replaced in place, and only on a change.
 @MainActor
@@ -428,7 +428,7 @@ final class FrameStore: @unchecked Sendable {
 /// Where captures go when nobody names a path.
 enum CaptureFolder {
     static var url: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/DeskPad")
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/VinDesk")
     }
 
     static func newFileURL(extension ext: String) -> URL {
@@ -436,21 +436,21 @@ enum CaptureFolder {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
         let stamp = formatter.string(from: Date())
-        var candidate = url.appendingPathComponent("DeskPad \(stamp).\(ext)")
+        var candidate = url.appendingPathComponent("VinDesk \(stamp).\(ext)")
         var suffix = 2
         while FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = url.appendingPathComponent("DeskPad \(stamp) \(suffix).\(ext)")
+            candidate = url.appendingPathComponent("VinDesk \(stamp) \(suffix).\(ext)")
             suffix += 1
         }
         return candidate
     }
 }
 
-/// Checks a path a caller asked DeskPad to write to.
+/// Checks a path a caller asked VinDesk to write to.
 ///
-/// DeskPad is unsandboxed and may hold access to folders the caller does not,
+/// VinDesk is unsandboxed and may hold access to folders the caller does not,
 /// so an unchecked path would let a caller write - or overwrite - files through
-/// DeskPad that it could not touch itself. Hence: absolute, the expected
+/// VinDesk that it could not touch itself. Hence: absolute, the expected
 /// extension, an existing parent, and nothing there already.
 func validateOutputPath(_ path: String, extension ext: String) -> Result<String, CaptureError> {
     guard path.hasPrefix("/") else {
@@ -469,7 +469,7 @@ func validateOutputPath(_ path: String, extension ext: String) -> Result<String,
     }
     var info = stat()
     guard lstat(path, &info) != 0, errno == ENOENT else {
-        return .failure(.badPath("something already exists at that path; DeskPad never overwrites"))
+        return .failure(.badPath("something already exists at that path; VinDesk never overwrites"))
     }
     return .success(path)
 }
@@ -507,21 +507,21 @@ func writeExclusively(_ data: Data, to path: String) -> CaptureError? {
 
 // MARK: - Recording
 
-/// One recording: its own cursorless stream, encoded to HEVC by DeskPad itself.
+/// One recording: its own cursorless stream, encoded to HEVC by VinDesk itself.
 ///
 /// Deliberately not `SCRecordingOutput`. That hands the file to macOS's
 /// `replayd`, which puts its own Stop button in the menu bar; clicking it ended
-/// the recording, deleted the file, and never told DeskPad - which carried on
+/// the recording, deleted the file, and never told VinDesk - which carried on
 /// showing "recording" for hours and then reported a file that did not exist.
-/// Written here, the file is DeskPad's to finish, and every way a recording
-/// can end reaches DeskPad.
+/// Written here, the file is VinDesk's to finish, and every way a recording
+/// can end reaches VinDesk.
 ///
 /// `@unchecked` because the writer and everything about its progress is only
 /// touched on `queue`, which is also where frames arrive.
 final class RecordingSession: @unchecked Sendable {
     let url: URL
     /// The identity of the app that started it; nil when started from
-    /// DeskPad's own menu.
+    /// VinDesk's own menu.
     let owner: String?
     let startedAt = Date()
     /// Called on `queue` when the recording ends by itself, with what happened
@@ -777,7 +777,7 @@ final class CaptureService {
         } catch {
             logDiagnostic("could not start the capture API's stream: \(error)")
             frames.stop(.failed("could not start screen capture: \(error.localizedDescription). "
-                    + "Check DeskPad's Screen Recording permission."))
+                    + "Check VinDesk's Screen Recording permission."))
             return
         }
         guard !Task.isCancelled else {
@@ -944,7 +944,7 @@ final class CaptureService {
             return .failure(.notRecording(lastRecordingFailure ?? "nothing is recording"))
         }
         if let caller, session.owner != caller {
-            return .failure(.denied("this recording was started by another app or from DeskPad's menu"))
+            return .failure(.denied("this recording was started by another app or from VinDesk's menu"))
         }
         recording = nil
         recordingIndicatorTask?.cancel()

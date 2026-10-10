@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercises DeskPad's capture API against the running app. See API.md.
+"""Exercises VinDesk's capture API against the running app. See API.md.
 
 Doubles as the reference Python client: `request()` is all a caller needs.
 Run it from an app that is already allowed, or answer the first-use prompt.
@@ -12,7 +12,7 @@ import sys
 import tempfile
 import time
 
-SOCK = os.path.expanduser("~/Library/Application Support/DeskPad Dev/api.sock")
+SOCK = os.path.expanduser("~/Library/Application Support/VinDesk/api.sock")
 
 
 def request(req, sock_path=SOCK):

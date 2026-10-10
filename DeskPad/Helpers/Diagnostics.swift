@@ -1,6 +1,6 @@
 import Foundation
 
-/// Appends to ~/Library/Logs/deskpad-dev.log.
+/// Appends to ~/Library/Logs/vindesk.log.
 ///
 /// Reserved for the failures whose only other symptom is silence - a missing TCC
 /// grant, or a Kodi that is not listening for remote control - because what the
@@ -11,7 +11,7 @@ func logDiagnostic(_ message: String) {
     let line = "\(Date()) \(message)\n"
     let url = FileManager.default
         .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Logs/deskpad-dev.log")
+        .appendingPathComponent("Library/Logs/vindesk.log")
     if let handle = try? FileHandle(forWritingTo: url) {
         defer { try? handle.close() }
         _ = try? handle.seekToEnd()

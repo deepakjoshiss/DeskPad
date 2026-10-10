@@ -45,7 +45,7 @@ final class AppModel {
 
         // Polled rather than event-driven because the question is "which screen
         // contains the pointer", which no single event answers - a global
-        // monitor misses moves over DeskPad's own window, and a local one misses
+        // monitor misses moves over VinDesk's own window, and a local one misses
         // everything else.
         pointerTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {

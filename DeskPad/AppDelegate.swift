@@ -23,7 +23,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let viewController = ScreenViewController(model: model)
         let window = NSWindow(contentViewController: viewController)
         window.delegate = viewController
-        window.title = "DeskPad"
+        window.title = "VinDesk"
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
         window.titleVisibility = .hidden
@@ -77,7 +77,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         self.captureAPI = captureAPI
 
         // `--launch-kodi` so a script or another app can start the whole session
-        // with `open -a "DeskPad Dev" --args --launch-kodi`; a running DeskPad
+        // with `open -a "VinDesk" --args --launch-kodi`; a running VinDesk
         // takes the API's `kodi_launch` instead.
         if UserDefaults.standard.bool(forKey: AppMenus.launchKodiAtStartKey)
             || CommandLine.arguments.contains("--launch-kodi")
@@ -110,7 +110,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// virtual display goes away.
     ///
     /// Order is everything here. The virtual display exists only as long as this
-    /// process does, so a Kodi still running when DeskPad exits is instantly
+    /// process does, so a Kodi still running when VinDesk exits is instantly
     /// homeless: macOS moves it to the built-in display, where it reappears
     /// fullscreen across the user's actual screen until it finally quits. Quitting
     /// Kodi first and holding termination open until it is gone means it never has

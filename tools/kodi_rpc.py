@@ -21,7 +21,7 @@ import sys
 HOST = "127.0.0.1"
 PORT = 9090
 TIMEOUT = 6.0
-REQUEST_ID = "deskpad-launcher"
+REQUEST_ID = "vindesk-launcher"
 
 
 def call(method, params=None):

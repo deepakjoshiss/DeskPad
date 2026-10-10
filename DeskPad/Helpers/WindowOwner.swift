@@ -1,7 +1,7 @@
 import Cocoa
 
 /// The pid owning the topmost ordinary window whose frame satisfies `predicate`,
-/// ignoring DeskPad's own windows.
+/// ignoring VinDesk's own windows.
 ///
 /// Both input paths need this, for different reasons. A forwarded click has to
 /// know which app to activate; a forwarded keystroke carries no coordinates at

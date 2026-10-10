@@ -54,7 +54,7 @@ private let interEventDelay: UInt32 = 15000
 
 /// Brings the app owning the window at `point` to the front.
 ///
-/// Clicking the mirror makes DeskPad the active app, so the app being mirrored
+/// Clicking the mirror makes VinDesk the active app, so the app being mirrored
 /// is left inactive and spends the forwarded click on activating itself instead
 /// of acting on it. Activating first means the click does what was intended -
 /// and hands keyboard focus over as a bonus.
@@ -71,10 +71,10 @@ private func activateApplicationOwningWindow(at point: CGPoint) {
 /// are the real thing rather than synthesised approximations of one.
 ///
 /// The mirrored app is activated as well, because clicking the mirror made
-/// DeskPad the active app and left the mirrored one inactive - so the first real
+/// VinDesk the active app and left the mirrored one inactive - so the first real
 /// click after the pointer arrives would be spent activating it rather than
 /// acting on what was clicked. That is exactly the cost this gesture exists to
-/// avoid. The trade is that keyboard forwarding stops, since DeskPad is no longer
+/// avoid. The trade is that keyboard forwarding stops, since VinDesk is no longer
 /// frontmost; keystrokes then reach the mirrored app natively, and a single click
 /// on the mirror takes the keyboard back.
 private func captureCursor(at point: CGPoint) {

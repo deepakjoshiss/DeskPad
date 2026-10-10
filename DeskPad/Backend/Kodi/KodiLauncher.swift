@@ -13,11 +13,11 @@ import Cocoa
 ///   * Kodi enumerates displays once, at startup, so the display must exist
 ///     before Kodi does - which, launched from here, it always does.
 ///
-/// Quitting DeskPad ends the session: `AppDelegate` quits Kodi before the
+/// Quitting VinDesk ends the session: `AppDelegate` quits Kodi before the
 /// display goes, then calls `finishSession` to put Kodi's display settings back.
-/// That restore used to be a watcher script outliving DeskPad, which had to
-/// guess from the display vanishing whether DeskPad had quit or the screens had
-/// merely slept; DeskPad knows.
+/// That restore used to be a watcher script outliving VinDesk, which had to
+/// guess from the display vanishing whether VinDesk had quit or the screens had
+/// merely slept; VinDesk knows.
 @MainActor
 final class KodiLauncher {
     /// What the menu shows while a launch runs, and why the last one failed.
@@ -46,10 +46,10 @@ final class KodiLauncher {
 
     /// Kodi's display settings from before the session touched them. A file, and
     /// the same one the old launcher script used, so a session that ends without
-    /// restoring - DeskPad killed rather than quit - leaves the real values here
+    /// restoring - VinDesk killed rather than quit - leaves the real values here
     /// for the next session instead of letting it mistake our patched ones for them.
     private static let stateFile = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/kodi-on-deskpad/pre-session-settings")
+        .appendingPathComponent("Library/Application Support/VinDesk/pre-session-settings")
 
     /// Netskope re-signs HTTPS with a private root, and Kodi trusts only its own
     /// bundled roots. `SSL_CERT_FILE` covers Kodi's libcurl and the Python
@@ -100,7 +100,7 @@ final class KodiLauncher {
         // Before anything is patched, so there is something true to go back to.
         capturePreSessionSettings()
 
-        setProgress("Waiting for the DeskPad display…")
+        setProgress("Waiting for the VinDesk display…")
         let displayID = try await registeredDisplayID()
         let name = virtualDisplayName
 
@@ -126,7 +126,7 @@ final class KodiLauncher {
         }
 
         // Stopped for the change: editing it live wedges Kodi.
-        setProgress("Moving Kodi to the DeskPad display…")
+        setProgress("Moving Kodi to the VinDesk display…")
         await stopKodi()
         if let problem = GuiSettings.apply(
             [(Self.monitorSetting, target), (Self.screenModeSetting, screenMode)],
@@ -142,12 +142,12 @@ final class KodiLauncher {
             // 3s after launch, before it has finished enumerating displays. That
             // is inside Kodi; trying again is the user's call, not a loop here.
             throw KodiRPC.Failure(message: "Kodi reports '\(active)' rather than '\(target)'; it did not "
-                + "keep the DeskPad display. Launching again may help.")
+                + "keep the VinDesk display. Launching again may help.")
         }
         return target
     }
 
-    /// The display is DeskPad's own, so it normally exists already; this waits
+    /// The display is VinDesk's own, so it normally exists already; this waits
     /// out the moment after launch before macOS has published it.
     private func registeredDisplayID() async throws -> CGDirectDisplayID {
         for _ in 0 ..< 100 {
@@ -156,7 +156,7 @@ final class KodiLauncher {
             }
             try await Task.sleep(for: .milliseconds(250))
         }
-        throw KodiRPC.Failure(message: "the DeskPad display did not register within 25s")
+        throw KodiRPC.Failure(message: "the VinDesk display did not register within 25s")
     }
 
     static func runningKodi() -> NSRunningApplication? {

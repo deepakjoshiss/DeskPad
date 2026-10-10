@@ -97,7 +97,7 @@ enum KodiRPC {
         let message: String
     }
 
-    private static let requestID = "deskpad-launcher"
+    private static let requestID = "vindesk-launcher"
 
     /// The call's `result`, as JSON. Blocks, so it runs off the main thread.
     static func call(_ method: String, _ params: [String: Any]? = nil, timeout: Int = 6) async throws -> Data {

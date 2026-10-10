@@ -8,7 +8,7 @@ import Security
 /// the other end (`LOCAL_PEERTOKEN`), which is what the allowlist is built on -
 /// and because nothing outside this user, browsers included, can reach it.
 ///
-/// This matters more than usual: DeskPad holds the Screen Recording grant, so
+/// This matters more than usual: VinDesk holds the Screen Recording grant, so
 /// the API hands callers screen contents macOS would otherwise make them ask
 /// the user for. The first-use prompt stands in for that question.
 ///
@@ -17,7 +17,7 @@ import Security
 final class CaptureAPI: @unchecked Sendable {
     static var socketURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/DeskPad Dev/api.sock")
+            .appendingPathComponent("Library/Application Support/VinDesk/api.sock")
     }
 
     private let service: CaptureService
@@ -45,9 +45,9 @@ final class CaptureAPI: @unchecked Sendable {
         chmod(directory, 0o700)
 
         // A socket file left by a crash is harmless to remove; one another
-        // running DeskPad is still answering on is not.
+        // running VinDesk is still answering on is not.
         if isAnswering(path) {
-            logDiagnostic("another DeskPad is already serving \(path); the capture API is off in this one.")
+            logDiagnostic("another VinDesk is already serving \(path); the capture API is off in this one.")
             return
         }
         unlink(path)
@@ -110,7 +110,7 @@ final class CaptureAPI: @unchecked Sendable {
 
     private func handle(_ client: Int32) {
         defer { close(client) }
-        // A caller that hangs up early must not take DeskPad down with SIGPIPE.
+        // A caller that hangs up early must not take VinDesk down with SIGPIPE.
         var on: Int32 = 1
         setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
         var readTimeout = timeval(tv_sec: 5, tv_usec: 0)
@@ -208,7 +208,7 @@ final class CaptureAPI: @unchecked Sendable {
             return .failure(.denied("could not identify the calling app"))
         }
         guard let identity = approve(caller, op: request.op) else {
-            return .failure(.denied("\(caller.name) is not allowed to use DeskPad's capture API"))
+            return .failure(.denied("\(caller.name) is not allowed to use VinDesk's capture API"))
         }
 
         switch request.op {
@@ -456,13 +456,13 @@ final class CaptureAPI: @unchecked Sendable {
     @MainActor
     private static func prompt(name: String, path: String, op: String, in window: NSWindow) async -> Approval {
         let alert = NSAlert()
-        alert.messageText = "“\(name)” wants to use DeskPad"
-        let asked = op == "kodi_launch" ? "launch Kodi on the DeskPad display" : op.replacingOccurrences(of: "_", with: " ")
+        alert.messageText = "“\(name)” wants to use VinDesk"
+        let asked = op == "kodi_launch" ? "launch Kodi on the VinDesk display" : op.replacingOccurrences(of: "_", with: " ")
         alert.informativeText = """
         \(path)
 
-        It asked to \(asked). Allowing it lets the app use all of DeskPad's API: launching Kodi, and - since \
-        DeskPad holds the Screen Recording permission - seeing and recording whatever is on the DeskPad display.
+        It asked to \(asked). Allowing it lets the app use all of VinDesk's API: launching Kodi, and - since \
+        VinDesk holds the Screen Recording permission - seeing and recording whatever is on the VinDesk display.
         """
         alert.addButton(withTitle: "Deny")
         alert.addButton(withTitle: "Allow Once")

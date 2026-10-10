@@ -24,7 +24,7 @@ func kodi(on displayID: CGDirectDisplayID) -> NSRunningApplication? {
 /// keyboard off the AppKit responder chain (`-[OSXGLView keyDown:]` forwards to
 /// `CWinEventsOSXImpl`), and responder delivery needs a key window, which an
 /// inactive app does not have. Since the whole point here is to type while
-/// DeskPad - not Kodi - holds focus, an injected key event has nowhere to land.
+/// VinDesk - not Kodi - holds focus, an injected key event has nowhere to land.
 /// JSON-RPC sidesteps focus entirely; verified driving a background Kodi.
 /// `@unchecked` rather than an actor, deliberately. Every mutable member below
 /// is touched only on `queue` - including `stateUpdateHandler` and the send
